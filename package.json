@@ -1,20 +1,19 @@
 {
   "name": "creator-life",
   "version": "1.0.0",
-  "main": "index.js",
+  "private": true,
+  "type": "module",
   "scripts": {
-  "dev": "vite",
-  "build": "tsc --noEmit && vite build",
-  "preview": "vite preview"
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
-    "phaser": "^3.90.0"
+    "phaser": "^3.90.0",
+    "three": "^0.185.1"
   },
   "devDependencies": {
+    "@types/three": "^0.185.0",
     "typescript": "^6.0.3",
     "vite": "^8.1.3"
   }

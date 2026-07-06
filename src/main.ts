@@ -1,13 +1,18 @@
 import type {
+  ChannelGain,
+  CreatorLifeSave,
   FormatOption,
   PlayerState,
   VideoDraft,
   VideoResult
 } from "./game/types";
+import { ChannelSimulation } from "./game3d/ChannelSimulation";
 import { CreatorLife3D } from "./game3d/CreatorLife3D";
-import { VideoProductionFlow } from "./game3d/VideoProductionFlow";
+import { VideoProductionFlowV2 } from "./game3d/VideoProductionFlowV2";
 import "./styles.css";
 import "./production.css";
+import "./production-v2.css";
+import "./channel.css";
 
 interface ModalAction {
   label: string;
@@ -34,7 +39,8 @@ interface CreatorLifeRuntime {
   renderHud: () => void;
 }
 
-const SAVE_KEY = "creator-life-save-v1";
+const SAVE_KEY = "creator-life-save-v2";
+const LEGACY_SAVE_KEY = "creator-life-save-v1";
 const container = document.getElementById("game-container");
 
 if (!container) {
@@ -43,77 +49,111 @@ if (!container) {
 
 const game = new CreatorLife3D(container);
 const runtime = game as unknown as CreatorLifeRuntime;
-let pendingPublicationMessage: string | null = null;
+const baseAdvanceTime = runtime.advanceTime.bind(runtime);
+const gainLayer = document.createElement("div");
+gainLayer.className = "channel-gain-layer";
+gainLayer.setAttribute("aria-live", "polite");
+container.append(gainLayer);
+
+let lastSubscriberCount = runtime.state.subscribers;
+let saveTimer: number | null = null;
+
+const scheduleSave = (): void => {
+  if (saveTimer !== null) return;
+  saveTimer = window.setTimeout(() => {
+    saveTimer = null;
+    saveGame();
+  }, 650);
+};
+
+const channelSimulation = new ChannelSimulation({
+  getState: () => runtime.state,
+  onGain: (gain) => animateChannelGain(gain),
+  onChange: () => {
+    runtime.renderHud();
+    scheduleSave();
+  }
+});
 
 const saveGame = (): void => {
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(runtime.state));
+    const payload: CreatorLifeSave = {
+      version: 2,
+      state: { ...runtime.state },
+      channel: channelSimulation.serialize()
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
   } catch {
-    // O jogo continua funcionando mesmo quando o armazenamento é bloqueado.
+    // O jogo continua funcionando quando o armazenamento é bloqueado.
   }
 };
 
-const loadGame = (): void => {
-  try {
-    const serializedState = localStorage.getItem(SAVE_KEY);
+const applyState = (savedState: Partial<PlayerState>): void => {
+  const fields: Array<keyof PlayerState> = [
+    "day",
+    "hour",
+    "energy",
+    "hunger",
+    "creativity",
+    "money",
+    "subscribers",
+    "totalViews",
+    "videos"
+  ];
 
-    if (!serializedState) {
-      return;
+  fields.forEach((field) => {
+    const value = savedState[field];
+    if (Number.isFinite(value)) {
+      runtime.state[field] = Number(value) as never;
+    }
+  });
+};
+
+const loadGame = (): ChannelGain | null => {
+  try {
+    const currentSave = localStorage.getItem(SAVE_KEY);
+
+    if (currentSave) {
+      const payload = JSON.parse(currentSave) as CreatorLifeSave;
+      applyState(payload.state ?? {});
+      const offlineGain = channelSimulation.restore(payload.channel ?? null);
+      runtime.renderHud();
+      return offlineGain;
     }
 
-    const savedState = JSON.parse(serializedState) as Partial<PlayerState>;
-
-    Object.assign(runtime.state, {
-      day: Number.isFinite(savedState.day) ? savedState.day : runtime.state.day,
-      hour: Number.isFinite(savedState.hour)
-        ? savedState.hour
-        : runtime.state.hour,
-      energy: Number.isFinite(savedState.energy)
-        ? savedState.energy
-        : runtime.state.energy,
-      hunger: Number.isFinite(savedState.hunger)
-        ? savedState.hunger
-        : runtime.state.hunger,
-      creativity: Number.isFinite(savedState.creativity)
-        ? savedState.creativity
-        : runtime.state.creativity,
-      money: Number.isFinite(savedState.money)
-        ? savedState.money
-        : runtime.state.money,
-      subscribers: Number.isFinite(savedState.subscribers)
-        ? savedState.subscribers
-        : runtime.state.subscribers,
-      totalViews: Number.isFinite(savedState.totalViews)
-        ? savedState.totalViews
-        : runtime.state.totalViews,
-      videos: Number.isFinite(savedState.videos)
-        ? savedState.videos
-        : runtime.state.videos
-    });
-
-    runtime.renderHud();
+    const legacySave = localStorage.getItem(LEGACY_SAVE_KEY);
+    if (legacySave) {
+      applyState(JSON.parse(legacySave) as Partial<PlayerState>);
+      runtime.renderHud();
+      saveGame();
+    }
   } catch {
     localStorage.removeItem(SAVE_KEY);
   }
+
+  return null;
 };
 
-const productionFlow = new VideoProductionFlow(container, {
+runtime.advanceTime = (hours: number) => {
+  baseAdvanceTime(hours);
+  channelSimulation.advance(hours);
+  runtime.renderHud();
+  scheduleSave();
+};
+
+const productionFlow = new VideoProductionFlowV2(container, {
   getState: () => runtime.state,
   onOpenChange: (open) => {
     runtime.modalOpen = open;
     runtime.keys.clear();
-
-    if (!open && pendingPublicationMessage) {
-      runtime.showToast(pendingPublicationMessage, "success");
-      pendingPublicationMessage = null;
-    }
   },
-  onPublish: (
-    result: VideoResult,
-    format: FormatOption,
-    _draft: VideoDraft
-  ) => {
-    const subscribersBeforePublishing = runtime.state.subscribers;
+  onProductionStart: (format: FormatOption) => {
+    if (runtime.state.energy < format.energyCost) {
+      return `Este formato exige ${format.energyCost} de energia.`;
+    }
+    if (runtime.state.creativity < format.creativityCost) {
+      return `Este formato exige ${format.creativityCost} de criatividade.`;
+    }
 
     runtime.state.energy = Math.max(
       0,
@@ -123,46 +163,33 @@ const productionFlow = new VideoProductionFlow(container, {
       0,
       runtime.state.creativity - format.creativityCost
     );
+    runtime.renderHud();
+    scheduleSave();
+    return null;
+  },
+  onStageTime: (hours) => runtime.advanceTime(hours),
+  onPublished: (
+    result: VideoResult,
+    format: FormatOption,
+    draft: VideoDraft
+  ) => {
     runtime.state.videos += 1;
-    runtime.state.totalViews += result.views;
-    runtime.state.subscribers += result.subscribers;
-    runtime.state.money += result.revenue;
-    runtime.advanceTime(format.hours);
+    channelSimulation.addVideo(result, format, draft);
     runtime.renderHud();
     saveGame();
-
-    const reachedFirstMilestone =
-      subscribersBeforePublishing < 100 && runtime.state.subscribers >= 100;
-    const reachedMonetization =
-      subscribersBeforePublishing < 1000 && runtime.state.subscribers >= 1000;
-
-    pendingPublicationMessage = reachedMonetization
-      ? "Canal monetizado: você ultrapassou 1.000 inscritos."
-      : reachedFirstMilestone
-        ? "Primeira meta concluída: 100 inscritos alcançados."
-        : `Vídeo publicado: +${result.views.toLocaleString("pt-BR")} views e +${result.subscribers.toLocaleString("pt-BR")} inscritos.`;
   }
 });
 
-runtime.openComputer = () => {
+const openVideoLibrary = (): void => {
   runtime.showModal(
-    "Estação de produção",
-    `<div class="modal-stat-grid">
-      <div><span>Vídeos publicados</span><strong>${runtime.state.videos}</strong></div>
-      <div><span>Total de views</span><strong>${runtime.state.totalViews.toLocaleString("pt-BR")}</strong></div>
-    </div>
-    <p>Planeje o tema, o formato, o título e a thumbnail. Depois organize os blocos na mesa de edição antes de publicar.</p>
-    <p class="modal-note">Cada escolha altera qualidade, retenção, alcance, inscritos e receita do canal.</p>`,
+    "Biblioteca do canal",
+    channelSimulation.renderLibraryHtml(),
     [
       {
-        label: "Criar novo vídeo",
+        label: "Atualizar dados",
         action: () => {
           runtime.closeModal();
-          const error = productionFlow.open();
-
-          if (error) {
-            runtime.showToast(error, "warning");
-          }
+          openVideoLibrary();
         }
       },
       {
@@ -173,6 +200,100 @@ runtime.openComputer = () => {
     ]
   );
 };
+
+runtime.openComputer = () => {
+  runtime.showModal(
+    "Estação de produção",
+    `<div class="modal-stat-grid">
+      <div><span>Vídeos publicados</span><strong>${runtime.state.videos}</strong></div>
+      <div><span>Total de views</span><strong>${runtime.state.totalViews.toLocaleString("pt-BR")}</strong></div>
+    </div>
+    <p>Planeje, grave, edite, renderize e envie o próximo vídeo. O resultado não será revelado antes da publicação.</p>
+    <p class="modal-note">Cada vídeo permanece no catálogo e pode continuar recebendo views, likes e inscritos por muito tempo.</p>`,
+    [
+      {
+        label: "Criar novo vídeo",
+        action: () => {
+          runtime.closeModal();
+          const error = productionFlow.open();
+          if (error) runtime.showToast(error, "warning");
+        }
+      },
+      {
+        label: "Ver vídeos publicados",
+        action: () => {
+          runtime.closeModal();
+          openVideoLibrary();
+        }
+      },
+      {
+        label: "Fechar",
+        action: () => runtime.closeModal(),
+        secondary: true
+      }
+    ]
+  );
+};
+
+function animateChannelGain(gain: ChannelGain): void {
+  runtime.renderHud();
+
+  const entries = [
+    gain.views > 0 ? `+${gain.views.toLocaleString("pt-BR")} views` : null,
+    gain.likes > 0 ? `+${gain.likes.toLocaleString("pt-BR")} likes` : null,
+    gain.subscribers > 0
+      ? `+${gain.subscribers.toLocaleString("pt-BR")} inscritos`
+      : null,
+    gain.revenue >= 0.01 ? `+R$ ${gain.revenue.toFixed(2)}` : null
+  ].filter((item): item is string => item !== null);
+
+  if (entries.length === 0) return;
+
+  const notification = document.createElement("article");
+  notification.className = "channel-gain-card";
+  notification.innerHTML = `
+    <span class="channel-gain-card__pulse"></span>
+    <div><small>${escapeHtml(gain.sourceTitle)}</small><strong>${entries.join(" · ")}</strong></div>
+  `;
+  gainLayer.append(notification);
+
+  const viewsElement = document.getElementById("hud-views");
+  const subscribersElement = document.getElementById("hud-subscribers");
+  if (gain.views > 0) pulseElement(viewsElement);
+  if (gain.subscribers > 0) pulseElement(subscribersElement);
+
+  window.setTimeout(() => notification.classList.add("is-visible"), 20);
+  window.setTimeout(() => {
+    notification.classList.remove("is-visible");
+    window.setTimeout(() => notification.remove(), 280);
+  }, 3600);
+
+  const previousSubscribers = lastSubscriberCount;
+  lastSubscriberCount = runtime.state.subscribers;
+
+  if (previousSubscribers < 1000 && lastSubscriberCount >= 1000) {
+    runtime.showToast("Canal monetizado: 1.000 inscritos alcançados.", "success");
+  } else if (previousSubscribers < 100 && lastSubscriberCount >= 100) {
+    runtime.showToast("Primeira meta concluída: 100 inscritos.", "success");
+  }
+}
+
+function pulseElement(element: HTMLElement | null): void {
+  if (!element) return;
+  element.classList.remove("is-channel-updating");
+  void element.offsetWidth;
+  element.classList.add("is-channel-updating");
+  window.setTimeout(() => element.classList.remove("is-channel-updating"), 620);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
 window.addEventListener(
   "keydown",
@@ -187,4 +308,19 @@ window.addEventListener(
 
 window.addEventListener("beforeunload", saveGame);
 window.setInterval(saveGame, 5000);
-loadGame();
+
+const offlineGain = loadGame();
+lastSubscriberCount = runtime.state.subscribers;
+channelSimulation.start();
+
+if (
+  offlineGain &&
+  (offlineGain.views > 0 || offlineGain.subscribers > 0)
+) {
+  window.setTimeout(() => {
+    animateChannelGain({
+      ...offlineGain,
+      sourceTitle: "Desempenho enquanto você estava fora"
+    });
+  }, 800);
+}

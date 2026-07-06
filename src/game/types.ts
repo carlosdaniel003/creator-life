@@ -71,3 +71,53 @@ export interface VideoResult {
   revenue: number;
   performanceLabel: string;
 }
+
+export interface PublishedVideo {
+  id: string;
+  title: string;
+  themeId: ThemeId;
+  formatId: FormatId;
+  thumbnailId: ThumbnailId;
+  editingOrder: EditingBlockId[];
+  publishedDay: number;
+  publishedHour: number;
+  ageHours: number;
+  subscribersAtPublish: number;
+  hiddenQuality: number;
+  hiddenPlanningScore: number;
+  hiddenEditingScore: number;
+  hiddenTitleScore: number;
+  initialMomentum: number;
+  evergreenFactor: number;
+  trendFactor: number;
+  viralFactor: number;
+  totalViews: number;
+  totalLikes: number;
+  totalSubscribers: number;
+  totalRevenue: number;
+  viewRemainder: number;
+  likeRemainder: number;
+  subscriberRemainder: number;
+  revenueRemainder: number;
+}
+
+export interface ChannelGain {
+  views: number;
+  likes: number;
+  subscribers: number;
+  revenue: number;
+  sourceVideoId: string | null;
+  sourceTitle: string;
+}
+
+export interface ChannelSimulationSave {
+  videos: PublishedVideo[];
+  channelHours: number;
+  lastSavedAt: number;
+}
+
+export interface CreatorLifeSave {
+  version: 2;
+  state: PlayerState;
+  channel: ChannelSimulationSave;
+}

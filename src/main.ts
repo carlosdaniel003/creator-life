@@ -1,27 +1,10 @@
-import Phaser from "phaser";
-
-import { GameScene } from "./scenes/GameScene";
-
+import { CreatorLife3D } from "./game3d/CreatorLife3D";
 import "./styles.css";
 
-const gameConfig: Phaser.Types.Core.GameConfig = {
-  type: Phaser.AUTO,
+const container = document.getElementById("game-container");
 
-  parent: "game-container",
+if (!container) {
+  throw new Error("O contêiner principal do jogo não foi encontrado.");
+}
 
-  width: 1280,
-  height: 720,
-
-  backgroundColor: "#101827",
-
-  scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH
-  },
-
-  scene: [
-    GameScene
-  ]
-};
-
-new Phaser.Game(gameConfig);
+new CreatorLife3D(container);

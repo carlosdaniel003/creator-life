@@ -3,6 +3,7 @@ import type {
   EditingBlockId,
   FormatOption,
   PlayerState,
+  ProgressionModifiers,
   VideoDraft,
   VideoResult
 } from "../game/types";
@@ -20,6 +21,7 @@ import {
 
 interface ProductionHost {
   getState: () => PlayerState;
+  getProgressionModifiers: () => ProgressionModifiers;
   onOpenChange: (open: boolean) => void;
   onProductionStart: (
     format: FormatOption,
@@ -162,7 +164,11 @@ export class VideoProductionFlowV3 {
 
     this.panel.querySelector("#cancel-production")?.addEventListener("click", () => this.close());
     this.panel.querySelector("#continue-production")?.addEventListener("click", () => {
-      const error = validateVideoDraft(this.draft, this.host.getState());
+      const error = validateVideoDraft(
+        this.draft,
+        this.host.getState(),
+        this.host.getProgressionModifiers()
+      );
       if (error) this.renderPlanner(true, error);
       else this.renderEditor();
     });
@@ -227,8 +233,13 @@ export class VideoProductionFlowV3 {
 
     const format = FORMATS.find((item) => item.id === this.draft.formatId);
     if (!format) return;
+    const modifiers = this.host.getProgressionModifiers();
 
-    const error = validateVideoDraft(this.draft, this.host.getState());
+    const error = validateVideoDraft(
+      this.draft,
+      this.host.getState(),
+      modifiers
+    );
     if (error) {
       this.renderPlanner(false, error);
       return;
@@ -242,8 +253,12 @@ export class VideoProductionFlowV3 {
 
     this.starting = true;
     const draft = this.cloneDraft();
-    const result = calculateHiddenVideoResult(draft, this.host.getState());
-    const stages = getProductionStages(format);
+    const result = calculateHiddenVideoResult(
+      draft,
+      this.host.getState(),
+      modifiers
+    );
+    const stages = getProductionStages(format, modifiers);
 
     this.opened = false;
     this.overlay.classList.remove("is-visible");

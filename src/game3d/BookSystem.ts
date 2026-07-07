@@ -5,6 +5,8 @@ import type {
   ReadingSave,
   SkillId
 } from "../game/types";
+import "../learning-center.css";
+import "./ProgressionExperiencePatch";
 
 interface BookDefinition {
   id: BookId;
@@ -36,7 +38,7 @@ export const BOOKS: BookDefinition[] = [
     description: "Ritmo, continuidade, cortes e organização da narrativa visual.",
     hours: 18,
     skill: "editing",
-    benefit: "+5 edição e edição 5% mais rápida"
+    benefit: "Melhora retenção, edição e velocidade de montagem"
   },
   {
     id: "camera-confidence",
@@ -45,7 +47,7 @@ export const BOOKS: BookDefinition[] = [
     description: "Presença, clareza, respiração e conexão com quem assiste.",
     hours: 20,
     skill: "communication",
-    benefit: "+4 qualidade audiovisual e mais consistência"
+    benefit: "Melhora qualidade audiovisual e conversão em inscritos"
   },
   {
     id: "click-design",
@@ -54,7 +56,7 @@ export const BOOKS: BookDefinition[] = [
     description: "Hierarquia, contraste e leitura rápida para títulos e thumbnails.",
     hours: 16,
     skill: "design",
-    benefit: "+5 em títulos e decisões visuais"
+    benefit: "Aumenta força de títulos, thumbnails e taxa de cliques"
   },
   {
     id: "retention-script",
@@ -63,7 +65,7 @@ export const BOOKS: BookDefinition[] = [
     description: "Promessa, gancho, progressão e recompensa narrativa.",
     hours: 22,
     skill: "scripting",
-    benefit: "+5 planejamento e planejamento 5% mais rápido"
+    benefit: "Melhora planejamento, retenção e força de séries"
   },
   {
     id: "creator-technology",
@@ -72,7 +74,7 @@ export const BOOKS: BookDefinition[] = [
     description: "Fluxo técnico, organização, diagnóstico e uso eficiente da máquina.",
     hours: 24,
     skill: "technology",
-    benefit: "+8% em renda freelance e melhor aproveitamento técnico"
+    benefit: "Melhora produtividade técnica, manutenção e renda freelance"
   },
   {
     id: "patient-audience",
@@ -81,7 +83,7 @@ export const BOOKS: BookDefinition[] = [
     description: "Catálogo, posicionamento, paciência e construção de público.",
     hours: 26,
     skill: "marketing",
-    benefit: "+4 em títulos, planejamento e consistência"
+    benefit: "Melhora impressões, nicho, distribuição e consistência"
   }
 ];
 
@@ -100,7 +102,10 @@ export class BookSystem {
         return existing
           ? {
               bookId: book.id,
-              hoursRead: Math.max(0, Math.min(book.hours, Number(existing.hoursRead ?? 0))),
+              hoursRead: Math.max(
+                0,
+                Math.min(book.hours, Number(existing.hoursRead ?? 0))
+              ),
               completed: Boolean(existing.completed)
             }
           : { bookId: book.id, hoursRead: 0, completed: false };
@@ -158,8 +163,14 @@ export class BookSystem {
       return { error: "Livro não encontrado.", completed: false, message: "" };
     }
 
+    const previousPercentage = (progress.hoursRead / book.hours) * 100;
     progress.hoursRead = Math.min(book.hours, progress.hoursRead + hours);
     this.save.totalReadingHours += hours;
+    const percentage = (progress.hoursRead / book.hours) * 100;
+    const unlockedMilestones = [25, 50, 75, 100].filter(
+      (milestone) =>
+        previousPercentage < milestone && percentage >= milestone
+    );
     let completedNow = false;
 
     if (progress.hoursRead >= book.hours && !progress.completed) {
@@ -172,12 +183,16 @@ export class BookSystem {
     }
 
     this.host.onChange();
+    const milestoneMessage = unlockedMilestones.length
+      ? ` Marco ${unlockedMilestones[unlockedMilestones.length - 1]}% desbloqueado: ${this.getMilestoneBenefit(book, unlockedMilestones[unlockedMilestones.length - 1])}.`
+      : "";
+
     return {
       error: null,
       completed: completedNow,
       message: completedNow
-        ? `${book.title} concluído. Conhecimento permanente adquirido.`
-        : `${hours}h lidas. Progresso: ${progress.hoursRead}/${book.hours}h.`
+        ? `${book.title} concluído. ${book.benefit}.`
+        : `${hours}h lidas. Progresso: ${progress.hoursRead}/${book.hours}h.${milestoneMessage}`
     };
   }
 
@@ -187,37 +202,54 @@ export class BookSystem {
       stageTimeMultipliers: { ...base.stageTimeMultipliers }
     };
 
-    for (const bookId of this.save.completedBooks) {
-      switch (bookId) {
+    for (const book of BOOKS) {
+      const progress = this.save.books.find((item) => item.bookId === book.id);
+      if (!progress) continue;
+      const fraction = Math.max(0, Math.min(1, progress.hoursRead / book.hours));
+      const milestonePower =
+        fraction >= 1
+          ? 1
+          : fraction >= 0.75
+            ? 0.72
+            : fraction >= 0.5
+              ? 0.46
+              : fraction >= 0.25
+                ? 0.22
+                : 0;
+      if (milestonePower <= 0) continue;
+
+      switch (book.id) {
         case "editing-rhythm":
-          modifiers.editingBonus += 5;
-          modifiers.stageTimeMultipliers.editing *= 0.95;
+          modifiers.editingBonus += 5 * milestonePower;
+          modifiers.stageTimeMultipliers.editing *=
+            1 - 0.05 * milestonePower;
           break;
         case "camera-confidence":
-          modifiers.audioVisualBonus += 4;
+          modifiers.audioVisualBonus += 4 * milestonePower;
           modifiers.qualityConsistency = Math.min(
             0.98,
-            modifiers.qualityConsistency + 0.035
+            modifiers.qualityConsistency + 0.035 * milestonePower
           );
           break;
         case "click-design":
-          modifiers.titleBonus += 5;
-          modifiers.planningBonus += 1.5;
+          modifiers.titleBonus += 5 * milestonePower;
+          modifiers.planningBonus += 1.5 * milestonePower;
           break;
         case "retention-script":
-          modifiers.planningBonus += 5;
-          modifiers.stageTimeMultipliers.planning *= 0.95;
+          modifiers.planningBonus += 5 * milestonePower;
+          modifiers.stageTimeMultipliers.planning *=
+            1 - 0.05 * milestonePower;
           break;
         case "creator-technology":
-          modifiers.editingBonus += 2;
-          modifiers.freelanceIncomeMultiplier += 0.08;
+          modifiers.editingBonus += 2 * milestonePower;
+          modifiers.freelanceIncomeMultiplier += 0.08 * milestonePower;
           break;
         case "patient-audience":
-          modifiers.titleBonus += 4;
-          modifiers.planningBonus += 4;
+          modifiers.titleBonus += 4 * milestonePower;
+          modifiers.planningBonus += 4 * milestonePower;
           modifiers.qualityConsistency = Math.min(
             0.98,
-            modifiers.qualityConsistency + 0.025
+            modifiers.qualityConsistency + 0.025 * milestonePower
           );
           break;
       }
@@ -225,23 +257,35 @@ export class BookSystem {
 
     modifiers.qualityCeiling = Math.min(
       99,
-      modifiers.qualityCeiling + this.save.completedBooks.length * 0.8
+      modifiers.qualityCeiling + this.getKnowledgePower() * 0.8
     );
     return modifiers;
   }
 
   public renderLibraryHtml(message = ""): string {
     const completed = this.save.completedBooks.length;
+    const bridge = window.__creatorLifeProgressionBridge;
     return `
       ${message ? `<p class="reading-message">${this.escapeHtml(message)}</p>` : ""}
-      <section class="reading-summary">
-        <div><span>Biblioteca</span><strong>${completed}/${BOOKS.length} livros</strong></div>
-        <div><span>Tempo de leitura</span><strong>${this.save.totalReadingHours.toFixed(0)}h</strong></div>
-        <div><span>Efeito</span><strong>Conhecimento permanente</strong></div>
+      <section class="learning-center-hero">
+        <div><span>CENTRO DE APRENDIZADO</span><h3>Livros e cursos</h3><p>Livros liberam conhecimento progressivo. Cursos aumentam o limite das habilidades. A prática transforma ambos em resultados.</p></div>
+        <div><strong>${this.save.totalReadingHours.toFixed(0)}h</strong><span>de leitura</span><small>${completed}/${BOOKS.length} livros concluídos</small></div>
       </section>
-      <p class="reading-intro">A leitura consome tempo e energia. Ao concluir um livro, o personagem recebe um benefício permanente ligado à produção de conteúdo.</p>
-      <section class="book-grid">
-        ${BOOKS.map((book) => this.renderBook(book)).join("")}
+      <nav class="learning-tabs">
+        <button type="button" class="is-active" data-learning-tab="books">Livros</button>
+        <button type="button" data-learning-tab="courses">Cursos profissionais</button>
+      </nav>
+      <section data-learning-panel="books">
+        <section class="reading-summary">
+          <div><span>Biblioteca</span><strong>${completed}/${BOOKS.length} livros</strong></div>
+          <div><span>Conhecimento</span><strong>${Math.round(this.getKnowledgePower() * 100)}%</strong></div>
+          <div><span>Modelo</span><strong>Marcos progressivos</strong></div>
+        </section>
+        <section class="book-grid">${BOOKS.map((book) => this.renderBook(book)).join("")}</section>
+      </section>
+      <section data-learning-panel="courses" hidden>
+        ${bridge?.renderCoursesHtml() ?? '<p class="learning-message">Formação ainda indisponível.</p>'}
+        ${bridge?.renderSkillsHtml() ?? ""}
       </section>
     `;
   }
@@ -250,13 +294,45 @@ export class BookSystem {
     root: HTMLElement,
     onRead: (bookId: BookId, hours: 2 | 4) => void
   ): void {
-    root.querySelectorAll<HTMLButtonElement>("[data-read-book]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const bookId = button.dataset.readBook as BookId;
-        const hours = Number(button.dataset.hours) === 4 ? 4 : 2;
-        onRead(bookId, hours);
+    root
+      .querySelectorAll<HTMLButtonElement>("[data-read-book]")
+      .forEach((button) => {
+        button.addEventListener("click", () => {
+          const bookId = button.dataset.readBook as BookId;
+          const hours = Number(button.dataset.hours) === 4 ? 4 : 2;
+          onRead(bookId, hours);
+        });
       });
-    });
+
+    root
+      .querySelectorAll<HTMLButtonElement>("[data-learning-tab]")
+      .forEach((button) => {
+        button.addEventListener("click", () => {
+          const tab = button.dataset.learningTab ?? "books";
+          root
+            .querySelectorAll<HTMLElement>("[data-learning-panel]")
+            .forEach((panel) => {
+              panel.hidden = panel.dataset.learningPanel !== tab;
+            });
+          root
+            .querySelectorAll("[data-learning-tab]")
+            .forEach((item) => item.classList.remove("is-active"));
+          button.classList.add("is-active");
+        });
+      });
+
+    window.__creatorLifeProgressionBridge?.bindCourseEvents(
+      root,
+      (message) => {
+        const messageElement = root.querySelector<HTMLElement>(
+          ".reading-message, .learning-message"
+        );
+        if (messageElement) {
+          messageElement.textContent = message;
+        }
+        this.host.onChange();
+      }
+    );
   }
 
   public getBook(bookId: BookId): BookDefinition | null {
@@ -267,27 +343,60 @@ export class BookSystem {
     const progress = this.save.books.find((item) => item.bookId === book.id);
     if (!progress) return "";
     const percentage = Math.round((progress.hoursRead / book.hours) * 100);
+    const nextMilestone = [25, 50, 75, 100].find(
+      (milestone) => percentage < milestone
+    );
 
     return `
-      <article class="book-card ${progress.completed ? "is-complete" : ""}">
+      <article class="book-card learning-book-card ${progress.completed ? "is-complete" : ""}">
         <div class="book-cover book-cover--${book.skill}"><span>${book.title.slice(0, 1)}</span></div>
         <div class="book-card__content">
-          <span>${book.author}</span>
-          <h3>${book.title}</h3>
-          <p>${book.description}</p>
-          <strong>${book.benefit}</strong>
+          <span>${book.author} · ${this.getSkillLabel(book.skill)}</span>
+          <h3>${book.title}</h3><p>${book.description}</p><strong>${book.benefit}</strong>
+          <div class="book-milestones">${[25, 50, 75, 100]
+            .map(
+              (milestone) =>
+                `<span class="${percentage >= milestone ? "is-unlocked" : ""}">${milestone}%</span>`
+            )
+            .join("")}</div>
           <div class="book-progress"><i style="width:${percentage}%"></i></div>
-          <small>${progress.hoursRead}/${book.hours} horas</small>
+          <small>${progress.hoursRead}/${book.hours} horas${nextMilestone ? ` · próximo desbloqueio em ${nextMilestone}%` : ""}</small>
         </div>
         <div class="book-card__actions">
           ${
             progress.completed
-              ? '<b>CONCLUÍDO</b>'
+              ? '<b>CONHECIMENTO COMPLETO</b>'
               : `<button type="button" data-read-book="${book.id}" data-hours="2">Ler 2h</button><button type="button" class="is-secondary" data-read-book="${book.id}" data-hours="4">Ler 4h</button>`
           }
         </div>
-      </article>
-    `;
+      </article>`;
+  }
+
+  private getKnowledgePower(): number {
+    return BOOKS.reduce((sum, book) => {
+      const progress = this.save.books.find((item) => item.bookId === book.id);
+      return sum + Math.min(1, (progress?.hoursRead ?? 0) / book.hours);
+    }, 0);
+  }
+
+  private getMilestoneBenefit(book: BookDefinition, milestone: number): string {
+    if (milestone === 25) return `fundamentos de ${this.getSkillLabel(book.skill)}`;
+    if (milestone === 50) return "bônus parcial aplicado às próximas produções";
+    if (milestone === 75) return "maior consistência e domínio da técnica";
+    return "benefício permanente completo";
+  }
+
+  private getSkillLabel(skill: SkillId): string {
+    return (
+      {
+        editing: "Edição",
+        communication: "Comunicação",
+        design: "Design",
+        scripting: "Roteiro",
+        technology: "Tecnologia",
+        marketing: "Marketing"
+      }[skill] ?? skill
+    );
   }
 
   private createDefaultSave(): ReadingSave {

@@ -1,10 +1,13 @@
 name: Build Creator Life
 
 on:
+  push:
+    branches:
+      - feat/isometric-3d-room
   pull_request:
     branches:
-      - ci/build-check
       - main
+      - ci/build-check
 
 jobs:
   build:

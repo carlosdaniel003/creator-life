@@ -264,7 +264,7 @@ export class BalancedChannelSimulation {
       0.15 + Math.log10(video.subscribersAtPublish + 10) * 0.2;
     const noise = 0.72 + Math.random() * 0.5;
     const consistencyBlend =
-      video.cadenceFactor * 0.62 + currentConsistency * 0.38;
+      (video.cadenceFactor ?? 0.82) * 0.62 + currentConsistency * 0.38;
     const rawViews =
       qualityPower *
       channelPower *

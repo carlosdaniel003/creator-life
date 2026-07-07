@@ -97,6 +97,8 @@ export interface VideoDraft {
   title: string;
   thumbnailId: ThumbnailId | null;
   editingOrder: EditingBlockId[];
+  /** Ordem correta sorteada para esta produção. Não é exibida ao jogador. */
+  editingIdealOrder?: EditingBlockId[];
 }
 
 export interface VideoResult {

@@ -25,21 +25,5 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Capture build
-        shell: bash
-        run: |
-          set +e
-          npm run build > build.log 2>&1
-          echo $? > build.status
-          exit 0
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
-
-      - name: Check build result
-        shell: bash
-        run: exit $(cat build.status)
+      - name: Build
+        run: npm run build

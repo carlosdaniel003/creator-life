@@ -6,8 +6,10 @@ import type {
   PlayerState
 } from "../game/types";
 
+type HydratedPlayerState = PlayerState & { thirst: number };
+
 interface LifeSimulationHost {
-  getState: () => PlayerState;
+  getState: () => HydratedPlayerState;
   onChange: () => void;
   onEvent: (
     message: string,

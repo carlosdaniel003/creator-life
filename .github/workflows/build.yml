@@ -26,4 +26,10 @@ jobs:
         run: npm install
 
       - name: Build
-        run: npm run build
+        shell: bash
+        run: |
+          set +e
+          npm run build > build.log 2>&1
+          status=$?
+          tail -n 80 build.log
+          exit $status

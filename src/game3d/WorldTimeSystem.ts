@@ -90,6 +90,16 @@ export class WorldTimeSystem {
       onNewStory: () => this.startNewStory()
     });
 
+    this.container.addEventListener("creator-life-preview-time", (event) => {
+      const customEvent = event as CustomEvent<{ hour?: number }>;
+      const hour = customEvent.detail?.hour;
+      if (Number.isFinite(hour)) this.preview(Number(hour));
+    });
+    this.container.addEventListener("creator-life-action-complete", () => {
+      this.lastTickAt = performance.now();
+      this.refresh();
+    });
+
     const state = this.host.getState();
     state.age = Number.isFinite(state.age)
       ? state.age
@@ -142,7 +152,7 @@ export class WorldTimeSystem {
     const elapsedMs = Math.min(5000, Math.max(0, now - this.lastTickAt));
     this.lastTickAt = now;
 
-    if (document.hidden || this.paused) return;
+    if (document.hidden || this.paused || this.isTimedTaskRunning()) return;
 
     const state = this.host.getState();
     const previousAge = state.age;
@@ -165,7 +175,7 @@ export class WorldTimeSystem {
     this.pauseMenu.setDisabled(timedTaskRunning);
 
     if (!this.paused) {
-      if (!this.host.isVisualPreviewActive()) {
+      if (!this.host.isVisualPreviewActive() && !timedTaskRunning) {
         this.updateEnvironment();
       }
       this.updateRain(1 / 60);
@@ -205,7 +215,13 @@ export class WorldTimeSystem {
     const dawn = Math.exp(-Math.pow((hour - 6.3) / 1.4, 2));
     const dusk = Math.exp(-Math.pow((hour - 18.2) / 1.5, 2));
     const weatherLight =
-      weather === "storm" ? 0.48 : weather === "rain" ? 0.66 : weather === "cloudy" ? 0.82 : 1;
+      weather === "storm"
+        ? 0.48
+        : weather === "rain"
+          ? 0.66
+          : weather === "cloudy"
+            ? 0.82
+            : 1;
 
     const night = new THREE.Color(0x07111f);
     const day = new THREE.Color(0x93a9bd);
@@ -214,11 +230,18 @@ export class WorldTimeSystem {
     const background = night.clone().lerp(day, daylight * weatherLight);
     background.lerp(warm, Math.min(0.3, (dawn + dusk) * 0.22));
     if (weather !== "clear") {
-      background.lerp(overcast, weather === "storm" ? 0.56 : weather === "rain" ? 0.38 : 0.22);
+      background.lerp(
+        overcast,
+        weather === "storm" ? 0.56 : weather === "rain" ? 0.38 : 0.22
+      );
     }
 
     this.lightning *= 0.84;
-    if (weather === "storm" && daylight < 0.8 && Math.random() < 0.0025) {
+    if (
+      weather === "storm" &&
+      daylight < 0.8 &&
+      Math.random() < 0.0025
+    ) {
       this.lightning = 1;
     }
     if (this.lightning > 0.02) {
@@ -228,8 +251,10 @@ export class WorldTimeSystem {
     this.scene.background = background;
     if (this.scene.fog instanceof THREE.Fog) {
       this.scene.fog.color.copy(background);
-      this.scene.fog.near = weather === "storm" ? 10 : weather === "rain" ? 13 : 17;
-      this.scene.fog.far = weather === "storm" ? 22 : weather === "rain" ? 25 : 30;
+      this.scene.fog.near =
+        weather === "storm" ? 10 : weather === "rain" ? 13 : 17;
+      this.scene.fog.far =
+        weather === "storm" ? 22 : weather === "rain" ? 25 : 30;
     }
 
     if (this.directionalLight) {
@@ -249,23 +274,36 @@ export class WorldTimeSystem {
     if (this.hemisphereLight) {
       this.hemisphereLight.intensity =
         0.42 + daylight * 1.9 * weatherLight + this.lightning * 1.8;
-      this.hemisphereLight.color.copy(background).lerp(new THREE.Color(0xe7f2ff), 0.48);
+      this.hemisphereLight.color
+        .copy(background)
+        .lerp(new THREE.Color(0xe7f2ff), 0.48);
     }
 
     if (this.roomLight) {
       this.roomLight.intensity = 8 + (1 - daylight) * 23;
-      this.roomLight.color.set(hour >= 18 || hour < 6 ? 0xffd7a3 : 0xffead0);
+      this.roomLight.color.set(
+        hour >= 18 || hour < 6 ? 0xffd7a3 : 0xffead0
+      );
     }
 
     if (this.windowMaterial) {
       const windowTint = new THREE.Color(0xffffff)
         .lerp(new THREE.Color(0x26354d), 1 - daylight)
-        .lerp(new THREE.Color(0x77808b), weather === "clear" ? 0 : weather === "cloudy" ? 0.22 : 0.4);
+        .lerp(
+          new THREE.Color(0x77808b),
+          weather === "clear" ? 0 : weather === "cloudy" ? 0.22 : 0.4
+        );
       this.windowMaterial.color.copy(windowTint);
     }
 
-    this.container.style.setProperty("--room-daylight", daylight.toFixed(3));
-    this.container.style.setProperty("--weather-darkness", (1 - weatherLight).toFixed(3));
+    this.container.style.setProperty(
+      "--room-daylight",
+      daylight.toFixed(3)
+    );
+    this.container.style.setProperty(
+      "--weather-darkness",
+      (1 - weatherLight).toFixed(3)
+    );
   }
 
   private updateRain(delta: number): void {
@@ -276,19 +314,23 @@ export class WorldTimeSystem {
       let top = this.rainPositions[index + 1] - delta * speed;
       if (top < -0.82) top = 0.9 + Math.random() * 0.25;
       this.rainPositions[index + 1] = top;
-      this.rainPositions[index + 4] = top - (this.weather === "storm" ? 0.28 : 0.18);
+      this.rainPositions[index + 4] =
+        top - (this.weather === "storm" ? 0.28 : 0.18);
     }
-    const position = this.rain.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const position = this.rain.geometry.getAttribute(
+      "position"
+    ) as THREE.BufferAttribute;
     position.needsUpdate = true;
   }
 
   private updateStatus(previewHour?: number): void {
     const state = this.host.getState();
     const hour = previewHour ?? state.hour;
+    const actionRunning = this.isTimedTaskRunning();
     this.status.innerHTML = `
       <div><span>${this.getDayPhaseForHour(hour)}</span><strong>${WEATHER_LABELS[this.weather]}</strong></div>
       <div><span>Idade</span><strong>${state.age} anos</strong></div>
-      <div><span>${this.paused ? "Estado" : "Ciclo do mundo"}</span><strong>${this.paused ? "Jogo pausado" : "24 min por dia"}</strong></div>
+      <div><span>${this.paused || actionRunning ? "Estado" : "Ciclo do mundo"}</span><strong>${this.paused ? "Jogo pausado" : actionRunning ? "Atividade em andamento" : "24 min por dia"}</strong></div>
     `;
     this.status.dataset.weather = this.weather;
   }
@@ -358,7 +400,9 @@ export class WorldTimeSystem {
     let result: THREE.PointLight | null = null;
     this.scene.traverse((object) => {
       if (!(object instanceof THREE.PointLight)) return;
-      if (object.position.distanceTo(new THREE.Vector3(0.4, 3.1, 0.3)) < 0.2) {
+      if (
+        object.position.distanceTo(new THREE.Vector3(0.4, 3.1, 0.3)) < 0.2
+      ) {
         result = object;
       }
     });
@@ -386,9 +430,12 @@ export class WorldTimeSystem {
   }
 
   private isTimedTaskRunning(): boolean {
-    return Boolean(
-      this.container.querySelector(
-        ".computer-task-card.is-visible, .reading-task-card.is-visible"
+    return (
+      this.container.classList.contains("is-character-busy") ||
+      Boolean(
+        this.container.querySelector(
+          ".computer-task-card.is-visible, .reading-task-card.is-visible, .character-action-card.is-visible"
+        )
       )
     );
   }

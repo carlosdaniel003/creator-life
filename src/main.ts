@@ -1,5 +1,4 @@
 import type {
-  BookId,
   ChannelGain,
   CreatorLifeSave,
   FormatOption,
@@ -76,6 +75,10 @@ const LEGACY_SAVE_KEYS = [
   "creator-life-save-v2",
   "creator-life-save-v1"
 ];
+const HUNGER_DRAIN_PER_HOUR = 4;
+const THIRST_DRAIN_PER_HOUR = 5.5;
+const STARVATION_ENERGY_DRAIN_PER_HOUR = 0.8;
+const DEHYDRATION_ENERGY_DRAIN_PER_HOUR = 1.2;
 const container = document.getElementById("game-container");
 
 if (!container) {
@@ -285,10 +288,57 @@ const loadGame = (): ChannelGain | null => {
 };
 
 runtime.advanceTime = (hours: number) => {
-  baseAdvanceTime(hours);
-  lifeSimulation.advance(hours);
-  progressionSystem.advance(hours);
-  channelSimulation.advance(hours);
+  const safeHours = Number.isFinite(hours) ? Math.max(0, hours) : 0;
+  if (safeHours <= 0) return;
+
+  const hungerBefore = runtime.state.hunger;
+  const thirstBefore = runtime.state.thirst;
+  const energyBeforeBaseAdvance = runtime.state.energy;
+
+  baseAdvanceTime(safeHours);
+
+  // A implementação 3D original aplicava −12 de energia em toda chamada
+  // quando a fome estava em zero. Com o relógio contínuo isso ocorria uma
+  // vez por segundo. A energia volta ao valor anterior e a penalidade
+  // proporcional é aplicada abaixo.
+  runtime.state.energy = energyBeforeBaseAdvance;
+
+  const energyBeforeLifeAdvance = runtime.state.energy;
+  lifeSimulation.advance(safeHours);
+
+  // O sistema de hidratação antigo aplicava no mínimo −2 por chamada.
+  // Removemos somente essa parcela fixa, preservando possíveis penalidades
+  // diárias de aluguel e outras regras processadas no mesmo avanço.
+  if (runtime.state.thirst <= 0) {
+    const legacyThirstPenalty = Math.max(2, safeHours * 2);
+    const energyLostDuringLifeAdvance = Math.max(
+      0,
+      energyBeforeLifeAdvance - runtime.state.energy
+    );
+    runtime.state.energy = Math.min(
+      100,
+      runtime.state.energy +
+        Math.min(legacyThirstPenalty, energyLostDuringLifeAdvance)
+    );
+  }
+
+  const starvationHours = getHoursSpentAtZero(
+    hungerBefore,
+    HUNGER_DRAIN_PER_HOUR,
+    safeHours
+  );
+  const dehydrationHours = getHoursSpentAtZero(
+    thirstBefore,
+    THIRST_DRAIN_PER_HOUR,
+    safeHours
+  );
+  const needPenalty =
+    starvationHours * STARVATION_ENERGY_DRAIN_PER_HOUR +
+    dehydrationHours * DEHYDRATION_ENERGY_DRAIN_PER_HOUR;
+
+  runtime.state.energy = Math.max(0, runtime.state.energy - needPenalty);
+  progressionSystem.advance(safeHours);
+  channelSimulation.advance(safeHours);
   runtime.renderHud();
   if (worldTime && !activeTimedTask) worldTime.refresh();
   scheduleSave();
@@ -729,11 +779,15 @@ runtime.openBed = () => {
       <span>RECUPERAÇÃO</span>
       <strong>Seu quarto recupera ${energyRecovery} de energia</strong>
       <p>A cama e o conforto atual também recuperam ${creativityRecovery} de criatividade durante 7 horas de sono.</p>
+      <small>Fome e hidratação continuam diminuindo durante o sono, mas a recuperação é aplicada ao final do descanso.</small>
     </div>`,
     [
       {
         label: "Dormir 7 horas",
         action: () => {
+          // Primeiro o mundo avança; depois a recuperação é aplicada. Dessa
+          // forma o personagem sempre acorda com a energia recuperada.
+          runtime.advanceTime(7);
           runtime.state.energy = Math.min(
             100,
             runtime.state.energy + energyRecovery
@@ -742,9 +796,13 @@ runtime.openBed = () => {
             100,
             runtime.state.creativity + creativityRecovery
           );
-          runtime.advanceTime(7);
+          runtime.renderHud();
+          scheduleSave();
           runtime.closeModal();
-          runtime.showToast("Descanso concluído.", "success");
+          runtime.showToast(
+            `Descanso concluído. Energia atual: ${Math.round(runtime.state.energy)}/100.`,
+            "success"
+          );
         }
       },
       {
@@ -801,6 +859,18 @@ function installThirstHud(): { value: HTMLElement; bar: HTMLElement } {
     throw new Error("Indicador de hidratação não encontrado.");
   }
   return { value, bar };
+}
+
+function getHoursSpentAtZero(
+  startingValue: number,
+  drainPerHour: number,
+  elapsedHours: number
+): number {
+  if (startingValue <= 0) return elapsedHours;
+  if (drainPerHour <= 0) return 0;
+
+  const hoursUntilZero = startingValue / drainPerHour;
+  return Math.max(0, elapsedHours - hoursUntilZero);
 }
 
 function pulseElement(element: HTMLElement | null): void {

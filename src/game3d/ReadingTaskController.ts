@@ -26,7 +26,6 @@ export class ReadingTaskController {
   private readonly card: HTMLElement;
   private readonly anchor = new THREE.Vector3(0.1, 2.72, -4.05);
   private active = false;
-  private frameId = 0;
 
   public constructor(private readonly runtime: ReadingRuntime3D) {
     this.layer = document.createElement("div");
@@ -44,7 +43,7 @@ export class ReadingTaskController {
         </div>
       </section>
     `;
-    runtime.container.append(this.layer);
+    this.runtime.container.append(this.layer);
     this.card = this.requireElement(".reading-task-card");
     this.updateWorldLayer();
   }
@@ -59,48 +58,58 @@ export class ReadingTaskController {
     this.active = true;
     this.runtime.modalOpen = true;
     this.runtime.keys.clear();
-    this.runtime.player.setPosition(0.1, -3.18);
-    this.runtime.player.setReadingPose(true);
     this.card.classList.add("is-visible");
 
     const title = this.requireElement("#reading-task-title");
     const detail = this.requireElement("#reading-task-detail");
     const progressBar = this.requireElement("#reading-task-progress");
     const time = this.requireElement("#reading-task-time");
-    const hudTime = document.getElementById("hud-time");
-    const startingHour = this.runtime.state.hour;
-    const durationMs = options.hours === 4 ? 5200 : 3300;
+    title.textContent = "Indo até a estante";
+    detail.textContent = "Escolhendo o local de leitura";
+    progressBar.style.width = "4%";
+    time.textContent = this.formatHour(this.runtime.state.hour);
 
-    title.textContent = options.title;
-    detail.textContent = `Sessão de ${options.hours} horas`;
-    progressBar.style.width = "0%";
+    try {
+      await this.runtime.player.walkTo(0.1, -2.95, 1000);
+      this.runtime.player.setPosition(0.1, -3.18);
+      this.runtime.player.setReadingPose(true);
 
-    await new Promise<void>((resolve) => {
-      const startedAt = performance.now();
-      const update = (now: number): void => {
-        const progress = Math.min(1, (now - startedAt) / durationMs);
-        const previewHour = startingHour + options.hours * progress;
-        const formatted = this.formatHour(previewHour);
+      const hudTime = document.getElementById("hud-time");
+      const startingHour = this.runtime.state.hour;
+      const durationMs = options.hours === 4 ? 5200 : 3300;
 
-        progressBar.style.width = `${Math.round(progress * 100)}%`;
-        time.textContent = formatted;
-        if (hudTime) hudTime.textContent = formatted;
-        this.runtime.player.updateReadingAnimation(now / 1000);
-        options.previewWorld(previewHour);
+      title.textContent = options.title;
+      detail.textContent = `Sessão de ${options.hours} horas`;
+      progressBar.style.width = "0%";
 
-        if (progress < 1) requestAnimationFrame(update);
-        else resolve();
-      };
-      requestAnimationFrame(update);
-    });
+      await new Promise<void>((resolve) => {
+        const startedAt = performance.now();
+        const update = (now: number): void => {
+          const progress = Math.min(1, (now - startedAt) / durationMs);
+          const previewHour = startingHour + options.hours * progress;
+          const formatted = this.formatHour(previewHour);
 
-    options.advanceTime(options.hours);
-    options.onComplete();
-    this.card.classList.remove("is-visible");
-    this.runtime.player.setReadingPose(false);
-    this.runtime.player.setPosition(0.1, -2.95);
-    this.runtime.modalOpen = false;
-    this.active = false;
+          progressBar.style.width = `${Math.round(progress * 100)}%`;
+          time.textContent = formatted;
+          if (hudTime) hudTime.textContent = formatted;
+          this.runtime.player.updateReadingAnimation(now / 1000);
+          options.previewWorld(previewHour);
+
+          if (progress < 1) requestAnimationFrame(update);
+          else resolve();
+        };
+        requestAnimationFrame(update);
+      });
+
+      options.advanceTime(options.hours);
+      options.onComplete();
+    } finally {
+      this.card.classList.remove("is-visible");
+      this.runtime.player.setReadingPose(false);
+      this.runtime.player.setPosition(0.1, -2.95);
+      this.runtime.modalOpen = false;
+      this.active = false;
+    }
   }
 
   private updateWorldLayer(): void {
@@ -111,7 +120,7 @@ export class ReadingTaskController {
     const y = (-projected.y * 0.5 + 0.5) * height;
     this.layer.style.left = `${x}px`;
     this.layer.style.top = `${y}px`;
-    this.frameId = requestAnimationFrame(() => this.updateWorldLayer());
+    requestAnimationFrame(() => this.updateWorldLayer());
   }
 
   private formatHour(value: number): string {

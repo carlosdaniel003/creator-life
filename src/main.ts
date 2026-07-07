@@ -7,12 +7,15 @@ import type {
   VideoResult
 } from "./game/types";
 import { ChannelSimulation } from "./game3d/ChannelSimulation";
+import { ComputerTaskController } from "./game3d/ComputerTaskController";
 import { CreatorLife3D } from "./game3d/CreatorLife3D";
-import { VideoProductionFlowV2 } from "./game3d/VideoProductionFlowV2";
+import { VideoProductionFlowV3 } from "./game3d/VideoProductionFlowV3";
 import "./styles.css";
 import "./production.css";
 import "./production-v2.css";
 import "./channel.css";
+import "./computer-task.css";
+import "./youtube-theme.css";
 
 interface ModalAction {
   label: string;
@@ -49,12 +52,8 @@ if (!container) {
 
 const game = new CreatorLife3D(container);
 const runtime = game as unknown as CreatorLifeRuntime;
+const computerTask = new ComputerTaskController(game as any);
 const baseAdvanceTime = runtime.advanceTime.bind(runtime);
-const gainLayer = document.createElement("div");
-gainLayer.className = "channel-gain-layer";
-gainLayer.setAttribute("aria-live", "polite");
-container.append(gainLayer);
-
 let lastSubscriberCount = runtime.state.subscribers;
 let saveTimer: number | null = null;
 
@@ -141,7 +140,7 @@ runtime.advanceTime = (hours: number) => {
   scheduleSave();
 };
 
-const productionFlow = new VideoProductionFlowV2(container, {
+const productionFlow = new VideoProductionFlowV3(container, {
   getState: () => runtime.state,
   onOpenChange: (open) => {
     runtime.modalOpen = open;
@@ -167,16 +166,22 @@ const productionFlow = new VideoProductionFlowV2(container, {
     scheduleSave();
     return null;
   },
-  onStageTime: (hours) => runtime.advanceTime(hours),
-  onPublished: (
+  onRunProduction: async (
+    stages,
     result: VideoResult,
     format: FormatOption,
     draft: VideoDraft
   ) => {
-    runtime.state.videos += 1;
-    channelSimulation.addVideo(result, format, draft);
-    runtime.renderHud();
-    saveGame();
+    await computerTask.runProduction(
+      stages,
+      (hours) => runtime.advanceTime(hours),
+      () => {
+        runtime.state.videos += 1;
+        channelSimulation.addVideo(result, format, draft);
+        runtime.renderHud();
+        saveGame();
+      }
+    );
   }
 });
 
@@ -203,13 +208,13 @@ const openVideoLibrary = (): void => {
 
 runtime.openComputer = () => {
   runtime.showModal(
-    "Estação de produção",
+    "Seu canal",
     `<div class="modal-stat-grid">
       <div><span>Vídeos publicados</span><strong>${runtime.state.videos}</strong></div>
       <div><span>Total de views</span><strong>${runtime.state.totalViews.toLocaleString("pt-BR")}</strong></div>
     </div>
-    <p>Planeje, grave, edite, renderize e envie o próximo vídeo. O resultado não será revelado antes da publicação.</p>
-    <p class="modal-note">Cada vídeo permanece no catálogo e pode continuar recebendo views, likes e inscritos por muito tempo.</p>`,
+    <p>Crie e acompanhe seus vídeos diretamente pelo computador.</p>
+    <p class="modal-note">Depois da edição, o personagem trabalhará no computador enquanto planejamento, gravação, renderização e upload consomem tempo no quarto.</p>`,
     [
       {
         label: "Criar novo vídeo",
@@ -237,44 +242,26 @@ runtime.openComputer = () => {
 
 function animateChannelGain(gain: ChannelGain): void {
   runtime.renderHud();
+  computerTask.showChannelGain(gain);
 
-  const entries = [
-    gain.views > 0 ? `+${gain.views.toLocaleString("pt-BR")} views` : null,
-    gain.likes > 0 ? `+${gain.likes.toLocaleString("pt-BR")} likes` : null,
-    gain.subscribers > 0
-      ? `+${gain.subscribers.toLocaleString("pt-BR")} inscritos`
-      : null,
-    gain.revenue >= 0.01 ? `+R$ ${gain.revenue.toFixed(2)}` : null
-  ].filter((item): item is string => item !== null);
-
-  if (entries.length === 0) return;
-
-  const notification = document.createElement("article");
-  notification.className = "channel-gain-card";
-  notification.innerHTML = `
-    <span class="channel-gain-card__pulse"></span>
-    <div><small>${escapeHtml(gain.sourceTitle)}</small><strong>${entries.join(" · ")}</strong></div>
-  `;
-  gainLayer.append(notification);
-
-  const viewsElement = document.getElementById("hud-views");
-  const subscribersElement = document.getElementById("hud-subscribers");
-  if (gain.views > 0) pulseElement(viewsElement);
-  if (gain.subscribers > 0) pulseElement(subscribersElement);
-
-  window.setTimeout(() => notification.classList.add("is-visible"), 20);
-  window.setTimeout(() => {
-    notification.classList.remove("is-visible");
-    window.setTimeout(() => notification.remove(), 280);
-  }, 3600);
+  if (gain.views > 0) pulseElement(document.getElementById("hud-views"));
+  if (gain.subscribers > 0) {
+    pulseElement(document.getElementById("hud-subscribers"));
+  }
 
   const previousSubscribers = lastSubscriberCount;
   lastSubscriberCount = runtime.state.subscribers;
 
   if (previousSubscribers < 1000 && lastSubscriberCount >= 1000) {
-    runtime.showToast("Canal monetizado: 1.000 inscritos alcançados.", "success");
+    computerTask.showMilestone(
+      "Canal monetizado",
+      "Você ultrapassou 1.000 inscritos."
+    );
   } else if (previousSubscribers < 100 && lastSubscriberCount >= 100) {
-    runtime.showToast("Primeira meta concluída: 100 inscritos.", "success");
+    computerTask.showMilestone(
+      "Primeira meta",
+      "Seu canal alcançou 100 inscritos."
+    );
   }
 }
 
@@ -284,15 +271,6 @@ function pulseElement(element: HTMLElement | null): void {
   void element.offsetWidth;
   element.classList.add("is-channel-updating");
   window.setTimeout(() => element.classList.remove("is-channel-updating"), 620);
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 }
 
 window.addEventListener(
@@ -318,9 +296,9 @@ if (
   (offlineGain.views > 0 || offlineGain.subscribers > 0)
 ) {
   window.setTimeout(() => {
-    animateChannelGain({
+    computerTask.showChannelGain({
       ...offlineGain,
-      sourceTitle: "Desempenho enquanto você estava fora"
+      sourceTitle: "Enquanto você estava fora"
     });
   }, 800);
 }

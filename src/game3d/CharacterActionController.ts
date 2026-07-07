@@ -1,15 +1,29 @@
 import * as THREE from "three";
 
 import type { PlayerState } from "../game/types";
+import "../character-actions.css";
 import type { PlayerAvatar } from "./PlayerAvatar";
+
+interface ModalAction {
+  label: string;
+  action: () => void;
+  secondary?: boolean;
+}
 
 interface CharacterActionRuntime {
   container: HTMLElement;
   camera: THREE.OrthographicCamera;
   player: PlayerAvatar;
-  state: PlayerState;
+  state: PlayerState & { thirst?: number };
   modalOpen: boolean;
   keys: Set<string>;
+  showModal: (title: string, body: string, actions: ModalAction[]) => void;
+  closeModal: () => void;
+  showToast: (
+    message: string,
+    type: "success" | "warning" | "neutral"
+  ) => void;
+  advanceTime: (hours: number) => void;
 }
 
 interface TimedActionOptions {
@@ -20,7 +34,6 @@ interface TimedActionOptions {
   durationMs: number;
   anchor: THREE.Vector3;
   advanceTime: (hours: number) => void;
-  previewWorld: (hour: number) => void;
   updatePose: (time: number) => void;
   onComplete: () => void;
 }
@@ -29,14 +42,12 @@ interface HomeActionOptions {
   type: "sleep" | "meal" | "water" | "study";
   hours: number;
   advanceTime: (hours: number) => void;
-  previewWorld: (hour: number) => void;
   onComplete: () => void;
 }
 
 interface FreelanceActionOptions {
   hours: number;
   advanceTime: (hours: number) => void;
-  previewWorld: (hour: number) => void;
   onComplete: () => void;
 }
 
@@ -76,7 +87,7 @@ export class CharacterActionController {
   private readonly card: HTMLElement;
   private anchor = new THREE.Vector3();
   private active = false;
-  private frameId = 0;
+  private modalIntegrationInstalled = false;
 
   public constructor(private readonly runtime: CharacterActionRuntime) {
     this.layer = document.createElement("div");
@@ -98,6 +109,23 @@ export class CharacterActionController {
     this.runtime.container.append(this.layer);
     this.card = this.requireElement(".character-action-card");
     this.updateWorldLayer();
+  }
+
+  public installModalActionAnimations(): void {
+    if (this.modalIntegrationInstalled) return;
+    this.modalIntegrationInstalled = true;
+
+    const originalShowModal = this.runtime.showModal.bind(this.runtime);
+    this.runtime.showModal = (title, body, actions) => {
+      originalShowModal(
+        title,
+        body,
+        actions.map((action) => ({
+          ...action,
+          action: this.decorateAction(action)
+        }))
+      );
+    };
   }
 
   public isActive(): boolean {
@@ -136,7 +164,6 @@ export class CharacterActionController {
             : config.durationMs,
         anchor: config.anchor,
         advanceTime: options.advanceTime,
-        previewWorld: options.previewWorld,
         updatePose: (time) => {
           if (options.type === "sleep") {
             this.runtime.player.updateSleepAnimation(time);
@@ -186,7 +213,6 @@ export class CharacterActionController {
       await this.animateProgress({
         hours: options.hours,
         durationMs: 5700,
-        previewWorld: options.previewWorld,
         updatePose: () => undefined
       });
 
@@ -200,6 +226,143 @@ export class CharacterActionController {
     } finally {
       this.finishAction();
     }
+  }
+
+  private decorateAction(action: ModalAction): () => void {
+    const label = action.label.toLocaleLowerCase("pt-BR");
+
+    if (label === "dormir 7 horas") {
+      return () => {
+        this.runtime.closeModal();
+        void this.runHomeAction({
+          type: "sleep",
+          hours: 7,
+          advanceTime: () => undefined,
+          onComplete: action.action
+        });
+      };
+    }
+
+    if (label === "comprar refeição") {
+      return () => {
+        if (this.runtime.state.money < 14) {
+          action.action();
+          return;
+        }
+        this.runtime.closeModal();
+        void this.runHomeAction({
+          type: "meal",
+          hours: 1,
+          advanceTime: () => undefined,
+          onComplete: action.action
+        });
+      };
+    }
+
+    if (label === "comprar água") {
+      return () => {
+        if (this.runtime.state.money < 3) {
+          action.action();
+          return;
+        }
+        this.runtime.closeModal();
+        void this.runHomeAction({
+          type: "water",
+          hours: 1,
+          advanceTime: () => undefined,
+          onComplete: action.action
+        });
+      };
+    }
+
+    const studyMatch = label.match(/^estudar (2|4) horas$/);
+    if (studyMatch) {
+      const hours = Number(studyMatch[1]) as 2 | 4;
+      return () => this.runDeferredStudy(action, hours);
+    }
+
+    if (label === "aceitar trabalho") {
+      return () => this.runDeferredFreelance(action);
+    }
+
+    return action.action;
+  }
+
+  private runDeferredStudy(action: ModalAction, hours: 2 | 4): void {
+    const energyCost = hours === 4 ? 22 : 10;
+    const thirst = this.runtime.state.thirst ?? 100;
+    if (
+      this.runtime.state.energy < energyCost ||
+      this.runtime.state.hunger < 12 ||
+      thirst < 12
+    ) {
+      action.action();
+      return;
+    }
+
+    const deferred = this.executeWithDeferredTime(action.action);
+    if (deferred.hours <= 0) return;
+
+    void this.runHomeAction({
+      type: "study",
+      hours,
+      advanceTime: deferred.advance,
+      onComplete: deferred.flushToasts
+    });
+  }
+
+  private runDeferredFreelance(action: ModalAction): void {
+    const deferred = this.executeWithDeferredTime(action.action);
+    if (deferred.hours <= 0) return;
+
+    void this.runFreelance({
+      hours: deferred.hours,
+      advanceTime: deferred.advance,
+      onComplete: deferred.flushToasts
+    });
+  }
+
+  private executeWithDeferredTime(action: () => void): {
+    hours: number;
+    advance: (hours: number) => void;
+    flushToasts: () => void;
+  } {
+    const runtime = this.runtime;
+    const originalAdvance = runtime.advanceTime;
+    const originalToast = runtime.showToast;
+    const queuedToasts: Array<{
+      message: string;
+      type: "success" | "warning" | "neutral";
+    }> = [];
+    let deferredHours = 0;
+
+    runtime.advanceTime = (hours) => {
+      deferredHours += Math.max(0, hours);
+    };
+    runtime.showToast = (message, type) => {
+      queuedToasts.push({ message, type });
+    };
+
+    try {
+      action();
+    } finally {
+      runtime.advanceTime = originalAdvance;
+      runtime.showToast = originalToast;
+    }
+
+    if (deferredHours > 0) {
+      runtime.closeModal();
+    } else {
+      queuedToasts.forEach((toast) => originalToast(toast.message, toast.type));
+    }
+
+    return {
+      hours: deferredHours,
+      advance: (hours) => originalAdvance.call(runtime, hours),
+      flushToasts: () => {
+        queuedToasts.forEach((toast) => originalToast(toast.message, toast.type));
+      }
+    };
   }
 
   private async runTimedAction(options: TimedActionOptions): Promise<void> {
@@ -216,7 +379,6 @@ export class CharacterActionController {
     await this.animateProgress({
       hours: options.hours,
       durationMs: options.durationMs,
-      previewWorld: options.previewWorld,
       updatePose: options.updatePose
     });
 
@@ -228,7 +390,6 @@ export class CharacterActionController {
   private animateProgress(options: {
     hours: number;
     durationMs: number;
-    previewWorld: (hour: number) => void;
     updatePose: (time: number) => void;
   }): Promise<void> {
     const progressBar = this.requireElement("#character-action-progress");
@@ -248,7 +409,7 @@ export class CharacterActionController {
         time.textContent = formatted;
         if (hudTime) hudTime.textContent = formatted;
         options.updatePose(now / 1000);
-        options.previewWorld(previewHour);
+        this.previewWorld(previewHour);
 
         if (progress < 1) requestAnimationFrame(update);
         else resolve();
@@ -286,6 +447,17 @@ export class CharacterActionController {
     this.runtime.modalOpen = false;
     this.runtime.container.classList.remove("is-character-busy");
     this.active = false;
+    this.runtime.container.dispatchEvent(
+      new CustomEvent("creator-life-action-complete")
+    );
+  }
+
+  private previewWorld(hour: number): void {
+    this.runtime.container.dispatchEvent(
+      new CustomEvent("creator-life-preview-time", {
+        detail: { hour }
+      })
+    );
   }
 
   private fadePlayer(visible: boolean): Promise<void> {
@@ -338,7 +510,7 @@ export class CharacterActionController {
     const y = (-projected.y * 0.5 + 0.5) * height;
     this.layer.style.left = `${x}px`;
     this.layer.style.top = `${y}px`;
-    this.frameId = requestAnimationFrame(() => this.updateWorldLayer());
+    requestAnimationFrame(() => this.updateWorldLayer());
   }
 
   private formatHour(value: number): string {

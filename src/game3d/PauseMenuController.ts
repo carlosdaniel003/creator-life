@@ -59,7 +59,7 @@ export class PauseMenuController {
           target instanceof HTMLInputElement ||
           target instanceof HTMLTextAreaElement ||
           target?.isContentEditable;
-        if (isTyping) return;
+        if (isTyping && !this.opened) return;
 
         if (event.key.toLocaleLowerCase("pt-BR") === "p") {
           event.preventDefault();
@@ -68,9 +68,11 @@ export class PauseMenuController {
           return;
         }
 
-        if (event.key === "Escape" && this.opened) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
+        if (!this.opened) return;
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (event.key === "Escape") {
           if (this.confirmingNewStory) {
             this.confirmingNewStory = false;
             this.renderMain();
@@ -81,9 +83,20 @@ export class PauseMenuController {
       },
       true
     );
+
+    window.addEventListener(
+      "keyup",
+      (event) => {
+        if (!this.opened) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      },
+      true
+    );
   }
 
   public setDisabled(disabled: boolean): void {
+    if (this.disabled === disabled) return;
     this.disabled = disabled;
     this.button.disabled = disabled;
     this.button.classList.toggle("is-disabled", disabled);
@@ -101,6 +114,7 @@ export class PauseMenuController {
       return;
     }
 
+    this.releaseMovementKeys();
     this.opened = true;
     this.confirmingNewStory = false;
     this.host.onPauseChange(true);
@@ -127,6 +141,20 @@ export class PauseMenuController {
     else this.open();
   }
 
+  private releaseMovementKeys(): void {
+    ["w", "a", "s", "d", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].forEach(
+      (key) => {
+        window.dispatchEvent(
+          new KeyboardEvent("keyup", {
+            key,
+            bubbles: true,
+            cancelable: true
+          })
+        );
+      }
+    );
+  }
+
   private renderMain(message = ""): void {
     const summary = this.host.getSummary();
     this.panel.innerHTML = `
@@ -150,7 +178,7 @@ export class PauseMenuController {
     this.panel.querySelector("#pause-resume")?.addEventListener("click", () => this.close());
     this.panel.querySelector("#pause-save")?.addEventListener("click", () => {
       this.host.onSave();
-      this.renderMain("Progresso salvo neste dispositivo.");
+      this.renderMain("Salvamento solicitado e registrado pelo autosave.");
     });
     this.panel.querySelector("#pause-new-story")?.addEventListener("click", () => {
       this.confirmingNewStory = true;

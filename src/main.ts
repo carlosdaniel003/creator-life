@@ -4,6 +4,7 @@ import type {
   FormatOption,
   LifeSimulationSave,
   PlayerState,
+  ProgressionSave,
   VideoDraft,
   VideoResult
 } from "./game/types";
@@ -11,6 +12,8 @@ import { BalancedChannelSimulation } from "./game3d/BalancedChannelSimulation";
 import { ComputerTaskController } from "./game3d/ComputerTaskController";
 import { CreatorLife3D } from "./game3d/CreatorLife3D";
 import { LifeSimulation } from "./game3d/LifeSimulation";
+import { ProgressionSystem } from "./game3d/ProgressionSystem";
+import { RoomProgressionVisuals } from "./game3d/RoomProgressionVisuals";
 import { VideoProductionFlowV3 } from "./game3d/VideoProductionFlowV3";
 import "./styles.css";
 import "./production.css";
@@ -19,6 +22,7 @@ import "./channel.css";
 import "./computer-task.css";
 import "./youtube-theme.css";
 import "./life.css";
+import "./progression.css";
 
 interface ModalAction {
   label: string;
@@ -32,6 +36,7 @@ interface CreatorLifeRuntime {
   keys: Set<string>;
   openComputer: () => void;
   openFridge: () => void;
+  openBed: () => void;
   showModal: (
     title: string,
     body: string,
@@ -46,15 +51,20 @@ interface CreatorLifeRuntime {
   renderHud: () => void;
 }
 
-interface LegacySaveV2 {
+interface LegacySave {
   version?: number;
   state?: Partial<PlayerState>;
   channel?: CreatorLifeSave["channel"];
   life?: Partial<LifeSimulationSave>;
+  progression?: Partial<ProgressionSave>;
 }
 
-const SAVE_KEY = "creator-life-save-v3";
-const LEGACY_SAVE_KEYS = ["creator-life-save-v2", "creator-life-save-v1"];
+const SAVE_KEY = "creator-life-save-v4";
+const LEGACY_SAVE_KEYS = [
+  "creator-life-save-v3",
+  "creator-life-save-v2",
+  "creator-life-save-v1"
+];
 const container = document.getElementById("game-container");
 
 if (!container) {
@@ -65,17 +75,19 @@ const game = new CreatorLife3D(container);
 const runtime = game as unknown as CreatorLifeRuntime;
 const baseAdvanceTime = runtime.advanceTime.bind(runtime);
 const baseRenderHud = runtime.renderHud.bind(runtime);
+const roomVisuals = new RoomProgressionVisuals((game as any).scene);
+const computerTask = new ComputerTaskController(game as any);
 
 if (!Number.isFinite(runtime.state.thirst)) {
   runtime.state.thirst = 100;
 }
 
 const thirstHud = installThirstHud();
-const computerTask = new ComputerTaskController(game as any);
 let lastSubscriberCount = runtime.state.subscribers;
 let saveTimer: number | null = null;
 let channelSimulation!: BalancedChannelSimulation;
 let lifeSimulation!: LifeSimulation;
+let progressionSystem!: ProgressionSystem;
 
 const scheduleSave = (): void => {
   if (saveTimer !== null) return;
@@ -91,9 +103,19 @@ lifeSimulation = new LifeSimulation(container, {
     runtime.renderHud();
     scheduleSave();
   },
-  onEvent: (message, type) => {
-    runtime.showToast(message, type);
-  }
+  onEvent: (message, type) => runtime.showToast(message, type)
+});
+
+progressionSystem = new ProgressionSystem({
+  getState: () => runtime.state,
+  getAcademicGrade: () => lifeSimulation.getCollegeGrade(),
+  advanceTime: (hours) => runtime.advanceTime(hours),
+  onChange: () => {
+    runtime.renderHud();
+    scheduleSave();
+  },
+  onEvent: (message, type) => runtime.showToast(message, type),
+  applyVisuals: (save) => roomVisuals.apply(save)
 });
 
 channelSimulation = new BalancedChannelSimulation({
@@ -108,17 +130,21 @@ channelSimulation = new BalancedChannelSimulation({
 runtime.renderHud = () => {
   baseRenderHud();
   thirstHud.value.textContent = `${Math.round(runtime.state.thirst)}/100`;
-  thirstHud.bar.style.width = `${Math.max(0, Math.min(100, runtime.state.thirst))}%`;
+  thirstHud.bar.style.width = `${Math.max(
+    0,
+    Math.min(100, runtime.state.thirst)
+  )}%`;
   lifeSimulation?.renderHud();
 };
 
 const saveGame = (): void => {
   try {
     const payload: CreatorLifeSave = {
-      version: 3,
+      version: 4,
       state: { ...runtime.state },
       channel: channelSimulation.serialize(),
-      life: lifeSimulation.serialize()
+      life: lifeSimulation.serialize(),
+      progression: progressionSystem.serialize()
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
   } catch {
@@ -152,13 +178,13 @@ const applyState = (savedState: Partial<PlayerState>): void => {
   }
 };
 
-const findLegacySave = (): LegacySaveV2 | null => {
+const findLegacySave = (): LegacySave | null => {
   for (const key of LEGACY_SAVE_KEYS) {
     const serialized = localStorage.getItem(key);
     if (!serialized) continue;
 
-    const parsed = JSON.parse(serialized) as LegacySaveV2 | Partial<PlayerState>;
-    if ("state" in parsed) return parsed as LegacySaveV2;
+    const parsed = JSON.parse(serialized) as LegacySave | Partial<PlayerState>;
+    if ("state" in parsed) return parsed as LegacySave;
     return { state: parsed as Partial<PlayerState> };
   }
 
@@ -174,12 +200,14 @@ const loadGame = (): ChannelGain | null => {
 
     if (!payload) {
       lifeSimulation.restore(null);
+      progressionSystem.restore(null);
       runtime.renderHud();
       return null;
     }
 
     applyState(payload.state ?? {});
     lifeSimulation.restore(payload.life ?? null);
+    progressionSystem.restore(payload.progression ?? null);
     const offlineGain = channelSimulation.restore(payload.channel ?? null);
     runtime.renderHud();
     saveGame();
@@ -187,6 +215,7 @@ const loadGame = (): ChannelGain | null => {
   } catch {
     localStorage.removeItem(SAVE_KEY);
     lifeSimulation.restore(null);
+    progressionSystem.restore(null);
     runtime.renderHud();
     return null;
   }
@@ -195,6 +224,7 @@ const loadGame = (): ChannelGain | null => {
 runtime.advanceTime = (hours: number) => {
   baseAdvanceTime(hours);
   lifeSimulation.advance(hours);
+  progressionSystem.advance(hours);
   channelSimulation.advance(hours);
   runtime.renderHud();
   scheduleSave();
@@ -202,13 +232,19 @@ runtime.advanceTime = (hours: number) => {
 
 const productionFlow = new VideoProductionFlowV3(container, {
   getState: () => runtime.state,
+  getProgressionModifiers: () => progressionSystem.getModifiers(),
   onOpenChange: (open) => {
     runtime.modalOpen = open;
     runtime.keys.clear();
   },
   onProductionStart: (format: FormatOption) => {
-    if (runtime.state.energy < format.energyCost) {
-      return `Este formato exige ${format.energyCost} de energia.`;
+    const modifiers = progressionSystem.getModifiers();
+    const energyCost = Math.ceil(
+      format.energyCost * modifiers.energyCostMultiplier
+    );
+
+    if (runtime.state.energy < energyCost) {
+      return `Este formato exige ${energyCost} de energia com sua estrutura atual.`;
     }
     if (runtime.state.creativity < format.creativityCost) {
       return `Este formato exige ${format.creativityCost} de criatividade.`;
@@ -220,10 +256,7 @@ const productionFlow = new VideoProductionFlowV3(container, {
     const productionCostError = lifeSimulation.payProductionCost(format.id);
     if (productionCostError) return productionCostError;
 
-    runtime.state.energy = Math.max(
-      0,
-      runtime.state.energy - format.energyCost
-    );
+    runtime.state.energy = Math.max(0, runtime.state.energy - energyCost);
     runtime.state.creativity = Math.max(
       0,
       runtime.state.creativity - format.creativityCost
@@ -242,10 +275,22 @@ const productionFlow = new VideoProductionFlowV3(container, {
       stages,
       (hours) => runtime.advanceTime(hours),
       () => {
+        result.hiddenValueFallback = {
+          editing: Math.max(0, result.editingScore / 18)
+        };
         runtime.state.videos += 1;
         channelSimulation.addVideo(result, format, draft);
+        const sponsorMessage = progressionSystem.recordVideoPublished(
+          result,
+          format,
+          draft
+        );
         runtime.renderHud();
         saveGame();
+
+        if (sponsorMessage) {
+          computerTask.showMilestone("Contrato", sponsorMessage);
+        }
       }
     );
   }
@@ -275,7 +320,11 @@ const openVideoLibrary = (): void => {
 const openAgenda = (message = ""): void => {
   runtime.showModal(
     "Agenda pessoal",
-    `${message ? `<p class="agenda-message">${escapeHtml(message)}</p>` : ""}${lifeSimulation.renderAgendaHtml()}`,
+    `${
+      message
+        ? `<p class="agenda-message">${escapeHtml(message)}</p>`
+        : ""
+    }${lifeSimulation.renderAgendaHtml()}`,
     [
       {
         label: "Fechar agenda",
@@ -285,7 +334,7 @@ const openAgenda = (message = ""): void => {
     ]
   );
 
-  container!
+  container
     .querySelectorAll<HTMLButtonElement>("[data-pay-bill]")
     .forEach((button) => {
       button.addEventListener("click", () => {
@@ -296,6 +345,25 @@ const openAgenda = (message = ""): void => {
         openAgenda(error ?? "Pagamento confirmado.");
       });
     });
+};
+
+const openProgressionHub = (message = ""): void => {
+  runtime.showModal(
+    "Evolução do criador",
+    progressionSystem.renderHubHtml(message),
+    [
+      {
+        label: "Fechar central",
+        action: () => runtime.closeModal(),
+        secondary: true
+      }
+    ]
+  );
+
+  progressionSystem.bindHubEvents(container, (nextMessage) => {
+    runtime.closeModal();
+    openProgressionHub(nextMessage);
+  });
 };
 
 const openStudy = (): void => {
@@ -340,12 +408,13 @@ const performStudy = (hours: 2 | 4): void => {
 };
 
 const openFreelance = (): void => {
+  const multiplier = progressionSystem.getModifiers().freelanceIncomeMultiplier;
   runtime.showModal(
     "Trabalho freelance",
     `<div class="freelance-modal-card">
       <span>RENDA ALTERNATIVA</span>
       <strong>Entrega digital de 4 horas</strong>
-      <p>O pagamento costuma ficar entre R$ 50 e R$ 75. É a principal fonte de renda antes da monetização do canal.</p>
+      <p>O pagamento base fica entre R$ 50 e R$ 75. Seu equipamento, habilidades e reputação aplicam atualmente um multiplicador de ${multiplier.toFixed(2)}x.</p>
       <small>Exige internet ativa, 20 de energia e alimentação adequada.</small>
     </div>`,
     [
@@ -358,11 +427,12 @@ const openFreelance = (): void => {
             return;
           }
 
+          const bonus = progressionSystem.recordFreelance(result.income);
           runtime.advanceTime(4);
           runtime.closeModal();
           computerTask.showMilestone(
             "Freelance concluído",
-            `Pagamento recebido: R$ ${result.income.toFixed(2)}.`
+            `Pagamento total: R$ ${(result.income + bonus).toFixed(2)}.`
           );
         }
       },
@@ -380,15 +450,22 @@ runtime.openComputer = () => {
     runtime.state.subscribers >= 1000
       ? "Canal monetizado"
       : `${runtime.state.subscribers.toLocaleString("pt-BR")} / 1.000 inscritos`;
+  const modifiers = progressionSystem.getModifiers();
 
   runtime.showModal(
     "Seu computador",
     `<div class="modal-stat-grid">
       <div><span>Vídeos publicados</span><strong>${runtime.state.videos}</strong></div>
       <div><span>Monetização</span><strong>${monetizationText}</strong></div>
+      <div><span>Teto técnico</span><strong>${Math.round(
+        modifiers.qualityCeiling
+      )}/100</strong></div>
+      <div><span>Consistência</span><strong>${Math.round(
+        modifiers.qualityConsistency * 100
+      )}%</strong></div>
     </div>
-    <p>O computador concentra o canal, os trabalhos freelance, a faculdade e a agenda financeira.</p>
-    <p class="modal-note">Crescer leva tempo. Antes da monetização, concilie vídeos, estudos e trabalhos para pagar as contas.</p>`,
+    <p>Gerencie canal, trabalhos, faculdade, finanças, equipamentos, quarto e formação profissional.</p>
+    <p class="modal-note">Equipamento aumenta o potencial. Habilidade, prática, rotina e boas decisões determinam quanto desse potencial será alcançado.</p>`,
     [
       {
         label: "Criar novo vídeo",
@@ -399,6 +476,13 @@ runtime.openComputer = () => {
         }
       },
       {
+        label: "Evolução e lojas",
+        action: () => {
+          runtime.closeModal();
+          openProgressionHub();
+        }
+      },
+      {
         label: "Trabalho freelance",
         action: () => {
           runtime.closeModal();
@@ -406,7 +490,7 @@ runtime.openComputer = () => {
         }
       },
       {
-        label: "Estudar",
+        label: "Estudar faculdade",
         action: () => {
           runtime.closeModal();
           openStudy();
@@ -478,6 +562,46 @@ runtime.openFridge = () => {
   );
 };
 
+runtime.openBed = () => {
+  const modifiers = progressionSystem.getModifiers();
+  const energyRecovery = Math.round(62 * modifiers.bedRecoveryMultiplier);
+  const creativityRecovery = Math.round(
+    18 * modifiers.creativityRecoveryMultiplier
+  );
+
+  runtime.showModal(
+    "Descansar",
+    `<div class="study-modal-card">
+      <span>RECUPERAÇÃO</span>
+      <strong>Seu quarto recupera ${energyRecovery} de energia</strong>
+      <p>A cama e o conforto atual também recuperam ${creativityRecovery} de criatividade durante 7 horas de sono.</p>
+    </div>`,
+    [
+      {
+        label: "Dormir 7 horas",
+        action: () => {
+          runtime.state.energy = Math.min(
+            100,
+            runtime.state.energy + energyRecovery
+          );
+          runtime.state.creativity = Math.min(
+            100,
+            runtime.state.creativity + creativityRecovery
+          );
+          runtime.advanceTime(7);
+          runtime.closeModal();
+          runtime.showToast("Descanso concluído.", "success");
+        }
+      },
+      {
+        label: "Cancelar",
+        action: () => runtime.closeModal(),
+        secondary: true
+      }
+    ]
+  );
+};
+
 function animateChannelGain(gain: ChannelGain): void {
   runtime.renderHud();
   computerTask.showChannelGain(gain);
@@ -504,7 +628,7 @@ function animateChannelGain(gain: ChannelGain): void {
 }
 
 function installThirstHud(): { value: HTMLElement; bar: HTMLElement } {
-  const resourceCard = container!.querySelector<HTMLElement>(".resource-card");
+  const resourceCard = container.querySelector<HTMLElement>(".resource-card");
   if (!resourceCard) {
     throw new Error("Painel de recursos não encontrado.");
   }
@@ -519,7 +643,9 @@ function installThirstHud(): { value: HTMLElement; bar: HTMLElement } {
 
   const value = document.getElementById("thirst-value");
   const bar = document.getElementById("thirst-bar");
-  if (!value || !bar) throw new Error("Indicador de hidratação não encontrado.");
+  if (!value || !bar) {
+    throw new Error("Indicador de hidratação não encontrado.");
+  }
   return { value, bar };
 }
 
@@ -528,7 +654,10 @@ function pulseElement(element: HTMLElement | null): void {
   element.classList.remove("is-channel-updating");
   void element.offsetWidth;
   element.classList.add("is-channel-updating");
-  window.setTimeout(() => element.classList.remove("is-channel-updating"), 620);
+  window.setTimeout(
+    () => element.classList.remove("is-channel-updating"),
+    620
+  );
 }
 
 function escapeHtml(value: string): string {

@@ -5,7 +5,10 @@ import type {
   PlayerState,
   VideoDraft
 } from "../game/types";
-import type { EditingBlockPresentation } from "./EditingChallenge";
+import {
+  createEditingBlockPresentations,
+  type EditingBlockPresentation
+} from "./EditingChallenge";
 import {
   getConnector,
   getMatchedConnectorCount,
@@ -111,8 +114,9 @@ export function renderPlannerView(
 export function renderEditorView(
   draft: VideoDraft,
   format: FormatOption,
-  presentations: Record<EditingBlockId, EditingBlockPresentation>,
-  selectedBlockId: EditingBlockId | null
+  presentations: Record<EditingBlockId, EditingBlockPresentation> =
+    createEditingBlockPresentations(),
+  selectedBlockId: EditingBlockId | null = null
 ): string {
   const theme = THEMES.find((item) => item.id === draft.themeId);
   const thumbnail = THUMBNAILS.find((item) => item.id === draft.thumbnailId);

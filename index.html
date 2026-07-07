@@ -21,6 +21,28 @@
       <div id="game-container"></div>
     </main>
 
+    <script>
+      (() => {
+        const healthKey = "creator-life-health-v1";
+        const migrationKey = "creator-life-health-null-fix-v1";
+        const storedHealth = localStorage.getItem(healthKey);
+
+        // Number(null) resulta em 0. A versão anterior interpretava uma chave
+        // inexistente como personagem morto ao criar ou migrar uma história.
+        if (storedHealth === null) {
+          localStorage.setItem(healthKey, "100");
+        } else if (
+          localStorage.getItem(migrationKey) === null &&
+          Number(storedHealth) <= 0
+        ) {
+          // Recupera uma única vez os saves afetados pelo bug anterior, sem
+          // impedir mortes legítimas que ocorrerem depois desta correção.
+          localStorage.setItem(healthKey, "100");
+        }
+
+        localStorage.setItem(migrationKey, "applied");
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

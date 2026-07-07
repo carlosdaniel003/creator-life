@@ -1,4 +1,5 @@
 import type { EditingBlockId } from "../game/types";
+import "../editing-ux.css";
 
 export interface EditingBlockPresentation {
   label: string;

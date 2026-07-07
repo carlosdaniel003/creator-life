@@ -328,8 +328,8 @@ export class CharacterActionController {
     flushToasts: () => void;
   } {
     const runtime = this.runtime;
-    const originalAdvance = runtime.advanceTime;
-    const originalToast = runtime.showToast;
+    const originalAdvance = runtime.advanceTime.bind(runtime);
+    const originalToast = runtime.showToast.bind(runtime);
     const queuedToasts: Array<{
       message: string;
       type: "success" | "warning" | "neutral";
@@ -358,7 +358,7 @@ export class CharacterActionController {
 
     return {
       hours: deferredHours,
-      advance: (hours) => originalAdvance.call(runtime, hours),
+      advance: originalAdvance,
       flushToasts: () => {
         queuedToasts.forEach((toast) => originalToast(toast.message, toast.type));
       }

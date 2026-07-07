@@ -11,7 +11,7 @@ export interface PlayerState {
   hour: number;
   energy: number;
   hunger: number;
-  thirst: number;
+  thirst?: number;
   creativity: number;
   money: number;
   subscribers: number;

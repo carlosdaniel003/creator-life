@@ -27,7 +27,7 @@ interface ModalAction {
 }
 
 interface CreatorLifeRuntime {
-  state: PlayerState;
+  state: PlayerState & { thirst: number };
   modalOpen: boolean;
   keys: Set<string>;
   openComputer: () => void;
@@ -285,7 +285,7 @@ const openAgenda = (message = ""): void => {
     ]
   );
 
-  container
+  container!
     .querySelectorAll<HTMLButtonElement>("[data-pay-bill]")
     .forEach((button) => {
       button.addEventListener("click", () => {
@@ -504,7 +504,7 @@ function animateChannelGain(gain: ChannelGain): void {
 }
 
 function installThirstHud(): { value: HTMLElement; bar: HTMLElement } {
-  const resourceCard = container.querySelector<HTMLElement>(".resource-card");
+  const resourceCard = container!.querySelector<HTMLElement>(".resource-card");
   if (!resourceCard) {
     throw new Error("Painel de recursos não encontrado.");
   }

@@ -5,6 +5,14 @@ export type EditingBlockId = "hook" | "context" | "development" | "highlight" | 
 export type BillId = "rent" | "internet" | "electricity" | "college";
 export type BillStatus = "scheduled" | "pending" | "paid";
 export type TransactionType = "income" | "expense";
+export type WeatherType = "clear" | "cloudy" | "rain" | "storm";
+export type BookId =
+  | "editing-rhythm"
+  | "camera-confidence"
+  | "click-design"
+  | "retention-script"
+  | "creator-technology"
+  | "patient-audience";
 export type EquipmentSlot =
   | "cpu"
   | "gpu"
@@ -34,6 +42,7 @@ export type ProductionStageId = "planning" | "recording" | "editing" | "upload";
 export interface PlayerState {
   day: number;
   hour: number;
+  age?: number;
   energy: number;
   hunger: number;
   thirst?: number;
@@ -232,10 +241,23 @@ export interface ProgressionSave {
   claimedGoals: string[];
 }
 
+export interface BookProgress {
+  bookId: BookId;
+  hoursRead: number;
+  completed: boolean;
+}
+
+export interface ReadingSave {
+  books: BookProgress[];
+  completedBooks: BookId[];
+  totalReadingHours: number;
+}
+
 export interface CreatorLifeSave {
-  version: 4;
+  version: 5;
   state: PlayerState;
   channel: ChannelSimulationSave;
   life: LifeSimulationSave;
   progression: ProgressionSave;
+  reading: ReadingSave;
 }

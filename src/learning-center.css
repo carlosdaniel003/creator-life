@@ -1,0 +1,149 @@
+.game-modal:has(.learning-center-hero) {
+  width: min(1120px, calc(100vw - 28px));
+  height: min(860px, calc(100dvh - 28px));
+  color: #171717;
+  background: #f6f6f6;
+}
+
+.game-modal:has(.learning-center-hero) .game-modal__header,
+.game-modal:has(.learning-center-hero) .game-modal__actions {
+  color: #171717;
+  background: #fff;
+}
+
+.game-modal:has(.learning-center-hero) .game-modal__body {
+  color: #171717;
+  background: #f6f6f6;
+}
+
+.learning-center-hero {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 17px;
+  border: 1px solid #e2e2e2;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.learning-center-hero > div:first-child {
+  display: grid;
+  max-width: 720px;
+  gap: 5px;
+}
+
+.learning-center-hero span,
+.book-milestones span {
+  color: #ff0000;
+  font-size: 0.57rem;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.learning-center-hero h3,
+.learning-center-hero p {
+  margin: 0;
+}
+
+.learning-center-hero p {
+  color: #666;
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.learning-center-hero > div:last-child {
+  display: grid;
+  min-width: 160px;
+  place-content: center;
+  gap: 2px;
+  padding: 12px;
+  border-radius: 11px;
+  color: #fff;
+  background: #171717;
+  text-align: center;
+}
+
+.learning-center-hero > div:last-child strong {
+  font-size: 1.35rem;
+}
+
+.learning-center-hero > div:last-child span,
+.learning-center-hero > div:last-child small {
+  color: #ddd;
+}
+
+.learning-tabs {
+  display: flex;
+  gap: 7px;
+  margin: 12px 0;
+  padding: 8px;
+  border: 1px solid #e1e1e1;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.learning-tabs button {
+  min-height: 36px;
+  flex: 1;
+  border: 1px solid #dedede;
+  border-radius: 8px;
+  color: #333;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.learning-tabs button.is-active {
+  color: #fff;
+  border-color: #ff0000;
+  background: #ff0000;
+}
+
+.learning-book-card {
+  align-items: start;
+}
+
+.book-milestones {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.book-milestones span {
+  padding: 4px;
+  border-radius: 6px;
+  color: #8a8a8a;
+  background: #ededed;
+  font-size: 0.5rem;
+  text-align: center;
+}
+
+.book-milestones span.is-unlocked {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.learning-book-card .book-card__content > strong {
+  color: #8b0000;
+  font-size: 0.66rem;
+  line-height: 1.35;
+}
+
+.learning-book-card .book-card__actions b {
+  color: #15803d;
+  font-size: 0.62rem;
+}
+
+@media (max-width: 720px) {
+  .learning-center-hero {
+    flex-direction: column;
+  }
+
+  .learning-center-hero > div:last-child {
+    min-width: 0;
+  }
+}

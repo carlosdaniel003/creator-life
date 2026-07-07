@@ -43,6 +43,7 @@ export interface PlayerState {
   day: number;
   hour: number;
   age?: number;
+  health?: number;
   energy: number;
   hunger: number;
   thirst?: number;
@@ -97,7 +98,6 @@ export interface VideoDraft {
   title: string;
   thumbnailId: ThumbnailId | null;
   editingOrder: EditingBlockId[];
-  /** Ordem correta sorteada para esta produção. Não é exibida ao jogador. */
   editingIdealOrder?: EditingBlockId[];
 }
 
@@ -132,18 +132,37 @@ export interface PublishedVideo {
   trendFactor: number;
   viralFactor: number;
   cadenceFactor?: number;
+  nicheAuthorityAtPublish?: number;
+  seriesId?: string | null;
+  seriesFactor?: number;
+  complementaryFactor?: number;
+  libraryFactor?: number;
+  retentionRate?: number;
+  ctr?: number;
+  totalImpressions?: number;
+  totalClicks?: number;
   totalViews: number;
+  totalWatchHours?: number;
+  internalTrafficViews?: number;
   totalLikes: number;
   totalSubscribers: number;
   totalRevenue: number;
+  impressionRemainder?: number;
+  clickRemainder?: number;
   viewRemainder: number;
+  watchRemainder?: number;
+  internalTrafficRemainder?: number;
   likeRemainder: number;
   subscriberRemainder: number;
   revenueRemainder: number;
 }
 
 export interface ChannelGain {
+  impressions?: number;
+  clicks?: number;
   views: number;
+  watchHours?: number;
+  internalViews?: number;
   likes: number;
   subscribers: number;
   revenue: number;
@@ -155,6 +174,7 @@ export interface ChannelSimulationSave {
   videos: PublishedVideo[];
   channelHours: number;
   lastSavedAt: number;
+  nicheAuthority?: Record<ThemeId, number>;
 }
 
 export interface BillEntry {

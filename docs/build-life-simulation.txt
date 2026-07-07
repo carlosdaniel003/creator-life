@@ -1,1 +1,1 @@
-validate life simulation v1
+validate life simulation v2

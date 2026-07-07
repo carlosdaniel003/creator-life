@@ -1,1 +1,1 @@
-validate computer ui v1
+validate computer ui v2

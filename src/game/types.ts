@@ -95,7 +95,7 @@ export interface PublishedVideo {
   evergreenFactor: number;
   trendFactor: number;
   viralFactor: number;
-  cadenceFactor: number;
+  cadenceFactor?: number;
   totalViews: number;
   totalLikes: number;
   totalSubscribers: number;

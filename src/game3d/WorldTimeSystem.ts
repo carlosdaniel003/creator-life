@@ -1,6 +1,8 @@
 import * as THREE from "three";
 
 import type { PlayerState, WeatherType } from "../game/types";
+import "../pause-menu.css";
+import { PauseMenuController } from "./PauseMenuController";
 
 interface WorldTimeHost {
   getState: () => PlayerState & { age: number };
@@ -14,6 +16,13 @@ const REAL_MINUTES_PER_GAME_DAY = 24;
 const REAL_MS_PER_GAME_HOUR =
   (REAL_MINUTES_PER_GAME_DAY * 60_000) / 24;
 const DAYS_PER_YEAR = 360;
+const SAVE_KEYS = [
+  "creator-life-save-v5",
+  "creator-life-save-v4",
+  "creator-life-save-v3",
+  "creator-life-save-v2",
+  "creator-life-save-v1"
+];
 
 const WEATHER_LABELS: Record<WeatherType, string> = {
   clear: "Céu limpo",
@@ -30,12 +39,14 @@ export class WorldTimeSystem {
   private readonly windowMaterial: THREE.MeshBasicMaterial | null;
   private readonly rain: THREE.LineSegments;
   private readonly rainPositions: Float32Array;
+  private readonly pauseMenu: PauseMenuController;
   private timer: number | null = null;
   private animationFrame = 0;
   private lastTickAt = performance.now();
   private lastWeatherDay = -1;
   private weather: WeatherType = "clear";
   private lightning = 0;
+  private paused = false;
 
   public constructor(
     private readonly container: HTMLElement,
@@ -55,6 +66,29 @@ export class WorldTimeSystem {
     this.status.className = "world-status-hud";
     this.status.setAttribute("aria-label", "Tempo, clima e idade");
     this.container.append(this.status);
+
+    this.pauseMenu = new PauseMenuController(this.container, {
+      canOpen: () => !this.isTimedTaskRunning(),
+      onBlocked: () => this.showPauseBlocked(),
+      getSummary: () => {
+        const state = this.host.getState();
+        return {
+          day: state.day,
+          time: this.formatTime(state.hour),
+          age: state.age,
+          videos: state.videos,
+          subscribers: state.subscribers
+        };
+      },
+      onPauseChange: (paused) => {
+        this.paused = paused;
+        this.lastTickAt = performance.now();
+        this.status.classList.toggle("is-paused", paused);
+        this.updateStatus();
+      },
+      onSave: () => this.host.onChange(),
+      onNewStory: () => this.startNewStory()
+    });
 
     const state = this.host.getState();
     state.age = Number.isFinite(state.age)
@@ -108,7 +142,7 @@ export class WorldTimeSystem {
     const elapsedMs = Math.min(5000, Math.max(0, now - this.lastTickAt));
     this.lastTickAt = now;
 
-    if (document.hidden) return;
+    if (document.hidden || this.paused) return;
 
     const state = this.host.getState();
     const previousAge = state.age;
@@ -127,10 +161,15 @@ export class WorldTimeSystem {
   }
 
   private animate(): void {
-    if (!this.host.isVisualPreviewActive()) {
-      this.updateEnvironment();
+    const timedTaskRunning = this.isTimedTaskRunning();
+    this.pauseMenu.setDisabled(timedTaskRunning);
+
+    if (!this.paused) {
+      if (!this.host.isVisualPreviewActive()) {
+        this.updateEnvironment();
+      }
+      this.updateRain(1 / 60);
     }
-    this.updateRain(1 / 60);
     this.animationFrame = requestAnimationFrame(() => this.animate());
   }
 
@@ -249,7 +288,7 @@ export class WorldTimeSystem {
     this.status.innerHTML = `
       <div><span>${this.getDayPhaseForHour(hour)}</span><strong>${WEATHER_LABELS[this.weather]}</strong></div>
       <div><span>Idade</span><strong>${state.age} anos</strong></div>
-      <div><span>Ciclo do mundo</span><strong>24 min por dia</strong></div>
+      <div><span>${this.paused ? "Estado" : "Ciclo do mundo"}</span><strong>${this.paused ? "Jogo pausado" : "24 min por dia"}</strong></div>
     `;
     this.status.dataset.weather = this.weather;
   }
@@ -344,6 +383,35 @@ export class WorldTimeSystem {
       }
     });
     return result;
+  }
+
+  private isTimedTaskRunning(): boolean {
+    return Boolean(
+      this.container.querySelector(
+        ".computer-task-card.is-visible, .reading-task-card.is-visible"
+      )
+    );
+  }
+
+  private showPauseBlocked(): void {
+    const toast = this.container.querySelector<HTMLElement>(".game-toast");
+    if (!toast) return;
+    toast.textContent = "Conclua a atividade atual antes de pausar.";
+    toast.dataset.type = "warning";
+    toast.classList.add("is-visible");
+    window.setTimeout(() => toast.classList.remove("is-visible"), 2200);
+  }
+
+  private startNewStory(): void {
+    SAVE_KEYS.forEach((key) => localStorage.removeItem(key));
+    window.location.reload();
+  }
+
+  private formatTime(value: number): string {
+    const normalized = this.normalizeHour(value);
+    const hour = Math.floor(normalized);
+    const minute = Math.floor((normalized - hour) * 60);
+    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
   }
 
   private normalizeHour(value: number): number {

@@ -5,6 +5,31 @@ export type EditingBlockId = "hook" | "context" | "development" | "highlight" | 
 export type BillId = "rent" | "internet" | "electricity" | "college";
 export type BillStatus = "scheduled" | "pending" | "paid";
 export type TransactionType = "income" | "expense";
+export type EquipmentSlot =
+  | "cpu"
+  | "gpu"
+  | "ram"
+  | "storage"
+  | "monitor"
+  | "microphone"
+  | "camera"
+  | "internet";
+export type RoomUpgradeSlot =
+  | "bed"
+  | "chair"
+  | "desk"
+  | "lighting"
+  | "acoustic"
+  | "decor";
+export type SkillId =
+  | "editing"
+  | "communication"
+  | "design"
+  | "scripting"
+  | "technology"
+  | "marketing";
+export type ReputationId = "audience" | "professional" | "academic";
+export type ProductionStageId = "planning" | "recording" | "editing" | "upload";
 
 export interface PlayerState {
   day: number;
@@ -154,9 +179,63 @@ export interface LifeSimulationSave {
   lastProcessedDay: number;
 }
 
+export interface ProgressionModifiers {
+  qualityCeiling: number;
+  qualityConsistency: number;
+  planningBonus: number;
+  editingBonus: number;
+  titleBonus: number;
+  audioVisualBonus: number;
+  stageTimeMultipliers: Record<ProductionStageId, number>;
+  energyCostMultiplier: number;
+  freelanceIncomeMultiplier: number;
+  bedRecoveryMultiplier: number;
+  creativityRecoveryMultiplier: number;
+  monthlyPowerCost: number;
+  monthlyInternetSurcharge: number;
+}
+
+export interface CourseProgress {
+  courseId: string;
+  enrolled: boolean;
+  completed: boolean;
+  hoursCompleted: number;
+}
+
+export interface SponsorOffer {
+  id: string;
+  brand: string;
+  requiredTheme: ThemeId | null;
+  payment: number;
+  minQuality: number;
+  expiresDay: number;
+  accepted: boolean;
+  completed: boolean;
+}
+
+export interface ProgressionSave {
+  equipment: Record<EquipmentSlot, number>;
+  room: Record<RoomUpgradeSlot, number>;
+  equipmentCondition: Record<EquipmentSlot, number>;
+  courses: CourseProgress[];
+  skills: Record<SkillId, number>;
+  skillXp: Record<SkillId, number>;
+  reputations: Record<ReputationId, number>;
+  lastMaintenanceDay: number;
+  lastProcessedDay: number;
+  lastSubscriptionMonth: number;
+  totalInvested: number;
+  videosPracticed: number;
+  freelanceCompleted: number;
+  sponsorOffers: SponsorOffer[];
+  activeSponsorId: string | null;
+  claimedGoals: string[];
+}
+
 export interface CreatorLifeSave {
-  version: 3;
+  version: 4;
   state: PlayerState;
   channel: ChannelSimulationSave;
   life: LifeSimulationSave;
+  progression: ProgressionSave;
 }

@@ -1,0 +1,383 @@
+.resource-fill--thirst {
+  background: #b91c1c;
+  opacity: 0.72;
+}
+
+.life-calendar-hud {
+  position: absolute;
+  top: 144px;
+  left: 22px;
+  z-index: 18;
+  display: grid;
+  width: min(300px, calc(100vw - 44px));
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgb(0 0 0 / 11%);
+  border-radius: 12px;
+  color: #0f0f0f;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 14%);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.life-calendar-hud > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.life-calendar-hud span {
+  color: #606060;
+  font-size: 0.59rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.life-calendar-hud strong {
+  overflow: hidden;
+  color: #0f0f0f;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.life-calendar-hud__date {
+  padding-bottom: 7px;
+  border-bottom: 1px solid #ececec;
+}
+
+.life-calendar-hud__next.is-overdue span,
+.life-calendar-hud__next.is-overdue strong {
+  color: #d00000;
+}
+
+.agenda-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.agenda-date-card,
+.agenda-balance-card,
+.college-agenda-card,
+.study-modal-card,
+.freelance-modal-card,
+.food-options-grid article,
+.channel-consistency-card {
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  background: #fafafa;
+}
+
+.agenda-date-card,
+.agenda-balance-card {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+}
+
+.agenda-date-card span,
+.agenda-balance-card span,
+.college-agenda-card span,
+.study-modal-card span,
+.freelance-modal-card span,
+.food-options-grid span,
+.agenda-section__header span,
+.channel-consistency-card span {
+  color: #ff0000;
+  font-size: 0.61rem;
+  font-weight: 850;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.agenda-date-card strong,
+.agenda-balance-card strong,
+.college-agenda-card strong,
+.study-modal-card strong,
+.freelance-modal-card strong,
+.food-options-grid strong,
+.channel-consistency-card strong {
+  color: #0f0f0f;
+}
+
+.agenda-date-card small,
+.agenda-balance-card small,
+.college-agenda-card small,
+.freelance-modal-card small {
+  color: #606060;
+}
+
+.college-agenda-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 0.65fr);
+  align-items: center;
+  gap: 18px;
+  padding: 15px;
+  margin-bottom: 14px;
+}
+
+.college-agenda-card > div:first-child,
+.college-progress {
+  display: grid;
+  gap: 4px;
+}
+
+.college-agenda-card.is-good {
+  border-color: rgb(22 163 74 / 28%);
+}
+
+.college-agenda-card.is-medium {
+  border-color: rgb(245 158 11 / 34%);
+}
+
+.college-agenda-card.is-danger {
+  border-color: rgb(220 38 38 / 40%);
+  background: rgb(254 242 242 / 88%);
+}
+
+.college-progress > div {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e5e5;
+}
+
+.college-progress > div > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #ff0000;
+}
+
+.agenda-section + .agenda-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e5e5;
+}
+
+.agenda-section__header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 9px;
+}
+
+.agenda-section__header h3 {
+  margin: 3px 0 0;
+  color: #0f0f0f;
+  font-size: 0.98rem;
+}
+
+.agenda-section__header small {
+  color: #777;
+  font-size: 0.62rem;
+}
+
+.bill-list,
+.transaction-list {
+  display: grid;
+  gap: 7px;
+}
+
+.bill-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 12px;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.bill-card.is-late {
+  border-color: rgb(220 38 38 / 38%);
+  background: #fff7f7;
+}
+
+.bill-card--paid {
+  opacity: 0.62;
+}
+
+.bill-card > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.bill-card span,
+.bill-card small {
+  color: #777;
+  font-size: 0.6rem;
+}
+
+.bill-card strong {
+  color: #0f0f0f;
+  font-size: 0.76rem;
+}
+
+.bill-card__payment {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+}
+
+.bill-card__payment button {
+  min-height: 31px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  color: #fff;
+  background: #ff0000;
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.bill-card__payment button:hover {
+  background: #cc0000;
+}
+
+.bill-paid-label {
+  color: #15803d !important;
+  font-weight: 850;
+}
+
+.transaction-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: #f8f8f8;
+}
+
+.transaction-row > div {
+  display: grid;
+  gap: 2px;
+}
+
+.transaction-row strong {
+  color: #0f0f0f;
+  font-size: 0.7rem;
+}
+
+.transaction-row small {
+  color: #777;
+  font-size: 0.57rem;
+}
+
+.transaction-row > span {
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.transaction-row--income > span {
+  color: #15803d;
+}
+
+.transaction-row--expense > span {
+  color: #d00000;
+}
+
+.agenda-message {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgb(255 0 0 / 18%);
+  border-radius: 9px;
+  color: #8b0000;
+  background: rgb(255 0 0 / 4%);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.agenda-empty {
+  margin: 0;
+  padding: 16px;
+  color: #777;
+  text-align: center;
+}
+
+.study-modal-card,
+.freelance-modal-card {
+  display: grid;
+  gap: 7px;
+  padding: 16px;
+}
+
+.study-modal-card p,
+.freelance-modal-card p,
+.channel-consistency-card p {
+  margin: 0;
+  color: #606060;
+  line-height: 1.55;
+}
+
+.food-options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.food-options-grid article {
+  display: grid;
+  gap: 6px;
+  padding: 15px;
+}
+
+.food-options-grid p {
+  margin: 0;
+  color: #606060;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.channel-consistency-card {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+  padding: 12px;
+}
+
+.channel-consistency-card > div {
+  display: grid;
+  gap: 3px;
+}
+
+.channel-consistency-card p {
+  font-size: 0.7rem;
+}
+
+@media (max-width: 760px) {
+  .life-calendar-hud {
+    top: 132px;
+    left: 12px;
+    width: min(280px, calc(100vw - 24px));
+  }
+
+  .agenda-overview,
+  .food-options-grid,
+  .college-agenda-card,
+  .channel-consistency-card {
+    grid-template-columns: 1fr;
+  }
+
+  .agenda-section__header,
+  .bill-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bill-card__payment {
+    justify-content: space-between;
+  }
+}

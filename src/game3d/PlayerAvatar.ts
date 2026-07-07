@@ -8,9 +8,10 @@ export class PlayerAvatar {
   private readonly leftLeg = new THREE.Group();
   private readonly rightLeg = new THREE.Group();
   private readonly shirtMaterial = new THREE.MeshStandardMaterial({
-    color: 0x38bdf8,
+    color: 0xf5f5f5,
     roughness: 0.72
   });
+  private workingAtComputer = false;
 
   public constructor() {
     this.group.name = "player";
@@ -32,6 +33,11 @@ export class PlayerAvatar {
   }
 
   public updateWalkAnimation(time: number, moving: boolean): void {
+    if (this.workingAtComputer) {
+      this.updateComputerWorkAnimation(time);
+      return;
+    }
+
     const swing = moving ? Math.sin(time * 10) * 0.55 : 0;
     const bounce = moving ? Math.abs(Math.sin(time * 10)) * 0.045 : 0;
 
@@ -42,8 +48,44 @@ export class PlayerAvatar {
     this.group.position.y = bounce;
   }
 
+  public setComputerWorkPose(active: boolean): void {
+    this.workingAtComputer = active;
+
+    if (active) {
+      this.group.rotation.y = 0;
+      this.group.position.y = 0.48;
+      this.leftLeg.rotation.x = -1.42;
+      this.rightLeg.rotation.x = -1.42;
+      this.leftArm.rotation.x = 1.05;
+      this.rightArm.rotation.x = 1.05;
+      return;
+    }
+
+    this.group.position.y = 0;
+    this.leftArm.rotation.x = 0;
+    this.rightArm.rotation.x = 0;
+    this.leftLeg.rotation.x = 0;
+    this.rightLeg.rotation.x = 0;
+  }
+
+  public updateComputerWorkAnimation(time: number): void {
+    if (!this.workingAtComputer) {
+      return;
+    }
+
+    const typing = Math.sin(time * 13) * 0.09;
+    const alternateTyping = Math.sin(time * 13 + Math.PI) * 0.09;
+    const bodyMovement = Math.sin(time * 2.2) * 0.012;
+
+    this.leftArm.rotation.x = 1.06 + typing;
+    this.rightArm.rotation.x = 1.06 + alternateTyping;
+    this.leftLeg.rotation.x = -1.42;
+    this.rightLeg.rotation.x = -1.42;
+    this.group.position.y = 0.48 + bodyMovement;
+  }
+
   public cycleOutfit(): void {
-    const colors = [0x38bdf8, 0x22c55e, 0x8b5cf6, 0xf97316, 0xec4899];
+    const colors = [0xf5f5f5, 0xff0000, 0x181818, 0xd1d5db, 0x991b1b];
     const current = this.shirtMaterial.color.getHex();
     const nextIndex = (colors.indexOf(current) + 1) % colors.length;
     this.shirtMaterial.color.setHex(colors[nextIndex]);

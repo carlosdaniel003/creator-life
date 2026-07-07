@@ -1,17 +1,35 @@
 import * as THREE from "three";
 
 import type { ChannelGain, PlayerState } from "../game/types";
+import { CharacterActionController } from "./CharacterActionController";
 import type { ProductionStage } from "./VideoProductionModel";
 import type { PlayerAvatar } from "./PlayerAvatar";
+
+interface RuntimeModalAction {
+  label: string;
+  action: () => void;
+  secondary?: boolean;
+}
 
 interface GameRuntime3D {
   container: HTMLElement;
   scene: THREE.Scene;
   camera: THREE.OrthographicCamera;
   player: PlayerAvatar;
-  state: PlayerState;
+  state: PlayerState & { thirst?: number };
   modalOpen: boolean;
   keys: Set<string>;
+  showModal: (
+    title: string,
+    body: string,
+    actions: RuntimeModalAction[]
+  ) => void;
+  closeModal: () => void;
+  showToast: (
+    message: string,
+    type: "success" | "warning" | "neutral"
+  ) => void;
+  advanceTime: (hours: number) => void;
 }
 
 export class ComputerTaskController {
@@ -22,6 +40,9 @@ export class ComputerTaskController {
   private active = false;
 
   public constructor(private readonly runtime: GameRuntime3D) {
+    const characterActions = new CharacterActionController(runtime);
+    characterActions.installModalActionAnimations();
+
     this.worldLayer = document.createElement("div");
     this.worldLayer.className = "computer-world-layer";
     this.worldLayer.innerHTML = `

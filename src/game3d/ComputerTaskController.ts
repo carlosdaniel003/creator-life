@@ -32,6 +32,28 @@ interface GameRuntime3D {
   advanceTime: (hours: number) => void;
 }
 
+export interface ComputerActivityOptions {
+  title: string;
+  detail: string;
+  hours: number;
+  durationMs?: number;
+  eyebrow?: string;
+  icon?: string;
+  progressLabel?: string;
+  completionTitle?: string;
+  completionDetail?: string;
+  onComplete: () => void | Promise<void>;
+}
+
+declare global {
+  interface Window {
+    __creatorLifeComputerTask?: {
+      runActivity: (options: ComputerActivityOptions) => Promise<boolean>;
+      isActive: () => boolean;
+    };
+  }
+}
+
 export class ComputerTaskController {
   private readonly worldLayer: HTMLElement;
   private readonly taskCard: HTMLElement;
@@ -48,8 +70,8 @@ export class ComputerTaskController {
     this.worldLayer.innerHTML = `
       <section class="computer-task-card" aria-live="polite">
         <div class="computer-task-card__header">
-          <span class="computer-task-card__icon">▶</span>
-          <div><small>PRODUÇÃO EM ANDAMENTO</small><strong id="computer-task-label">Planejando</strong></div>
+          <span class="computer-task-card__icon" id="computer-task-icon">▶</span>
+          <div><small id="computer-task-eyebrow">PRODUÇÃO EM ANDAMENTO</small><strong id="computer-task-label">Planejando</strong></div>
         </div>
         <div class="computer-task-card__progress"><div id="computer-task-progress"></div></div>
         <div class="computer-task-card__meta">
@@ -65,6 +87,11 @@ export class ComputerTaskController {
     this.gainStack = this.requireElement(".computer-gain-stack");
     this.applyYouTubePalette();
     this.updateWorldLayer();
+
+    window.__creatorLifeComputerTask = {
+      runActivity: (options) => this.runActivity(options),
+      isActive: () => this.active
+    };
   }
 
   public async runProduction(
@@ -74,16 +101,13 @@ export class ComputerTaskController {
   ): Promise<void> {
     if (this.active) return;
 
-    this.active = true;
-    this.runtime.modalOpen = true;
-    this.runtime.keys.clear();
+    this.beginTask();
+    this.configureTaskHeader("PRODUÇÃO EM ANDAMENTO", "▶");
     this.taskCard.classList.add("is-visible");
-    this.showTravelState();
+    this.showTravelState("Indo até o computador", "Preparando a estação");
 
     try {
-      await this.runtime.player.walkTo(2.9, -1.86, 1050);
-      this.runtime.player.setPosition(2.9, -2.18);
-      this.runtime.player.setComputerWorkPose(true);
+      await this.movePlayerToComputer();
 
       for (let index = 0; index < stages.length; index += 1) {
         const stage = stages[index];
@@ -98,12 +122,56 @@ export class ComputerTaskController {
         "published"
       );
     } finally {
-      this.taskCard.classList.remove("is-visible");
-      this.runtime.player.setComputerWorkPose(false);
-      this.runtime.player.setPosition(2.9, -1.86);
-      this.runtime.modalOpen = false;
-      this.active = false;
-      this.applyDayPhase(this.runtime.state.hour);
+      this.finishTask();
+    }
+  }
+
+  public async runActivity(
+    options: ComputerActivityOptions
+  ): Promise<boolean> {
+    if (this.active) return false;
+
+    const safeHours = Number.isFinite(options.hours)
+      ? Math.max(0.25, options.hours)
+      : 1;
+    const durationMs = Number.isFinite(options.durationMs)
+      ? Math.max(1200, Number(options.durationMs))
+      : Math.min(6200, 2200 + safeHours * 720);
+
+    this.beginTask();
+    this.configureTaskHeader(
+      options.eyebrow ?? "ATIVIDADE NO COMPUTADOR",
+      options.icon ?? "●"
+    );
+    this.taskCard.classList.add("is-visible", "is-general-activity");
+    this.showTravelState("Indo até o computador", "Preparando a atividade");
+
+    try {
+      await this.movePlayerToComputer();
+      await this.animateStage(
+        {
+          id: "upload",
+          label: options.title,
+          hours: safeHours,
+          durationMs
+        },
+        0,
+        1,
+        options.progressLabel ?? options.detail
+      );
+      await options.onComplete();
+
+      if (options.completionTitle || options.completionDetail) {
+        this.showMessage(
+          options.completionTitle ?? options.title,
+          options.completionDetail ?? options.detail,
+          "milestone"
+        );
+      }
+      return true;
+    } finally {
+      this.taskCard.classList.remove("is-general-activity");
+      this.finishTask();
     }
   }
 
@@ -126,11 +194,38 @@ export class ComputerTaskController {
     this.showMessage(title, detail, "milestone");
   }
 
-  private showTravelState(): void {
-    this.requireElement("#computer-task-label").textContent =
-      "Indo até o computador";
-    this.requireElement("#computer-task-step").textContent =
-      "Preparando a estação";
+  private beginTask(): void {
+    this.active = true;
+    this.runtime.modalOpen = true;
+    this.runtime.keys.clear();
+  }
+
+  private finishTask(): void {
+    this.taskCard.classList.remove("is-visible", "is-general-activity");
+    this.runtime.player.setComputerWorkPose(false);
+    this.runtime.player.setPosition(2.9, -1.86);
+    this.runtime.modalOpen = false;
+    this.active = false;
+    this.applyDayPhase(this.runtime.state.hour);
+    this.runtime.container.dispatchEvent(
+      new CustomEvent("creator-life-action-complete")
+    );
+  }
+
+  private async movePlayerToComputer(): Promise<void> {
+    await this.runtime.player.walkTo(2.9, -1.86, 1050);
+    this.runtime.player.setPosition(2.9, -2.18);
+    this.runtime.player.setComputerWorkPose(true);
+  }
+
+  private configureTaskHeader(eyebrow: string, icon: string): void {
+    this.requireElement("#computer-task-eyebrow").textContent = eyebrow;
+    this.requireElement("#computer-task-icon").textContent = icon;
+  }
+
+  private showTravelState(label: string, detail: string): void {
+    this.requireElement("#computer-task-label").textContent = label;
+    this.requireElement("#computer-task-step").textContent = detail;
     this.requireElement("#computer-task-progress").style.width = "4%";
     this.requireElement("#computer-task-time").textContent = this.formatHour(
       this.runtime.state.hour
@@ -140,7 +235,8 @@ export class ComputerTaskController {
   private animateStage(
     stage: ProductionStage,
     stageIndex: number,
-    stageCount: number
+    stageCount: number,
+    customStep?: string
   ): Promise<void> {
     const label = this.requireElement("#computer-task-label");
     const progressBar = this.requireElement("#computer-task-progress");
@@ -150,7 +246,7 @@ export class ComputerTaskController {
     const startingHour = this.runtime.state.hour;
 
     label.textContent = stage.label;
-    step.textContent = `Etapa ${stageIndex + 1} de ${stageCount}`;
+    step.textContent = customStep ?? `Etapa ${stageIndex + 1} de ${stageCount}`;
     progressBar.style.width = "0%";
 
     return new Promise((resolve) => {
@@ -217,9 +313,6 @@ export class ComputerTaskController {
     );
 
     this.runtime.scene.background = background;
-    if (this.runtime.scene.fog instanceof THREE.Fog) {
-      this.runtime.scene.fog.color.copy(background);
-    }
 
     this.runtime.scene.traverse((object) => {
       if (object instanceof THREE.DirectionalLight) {

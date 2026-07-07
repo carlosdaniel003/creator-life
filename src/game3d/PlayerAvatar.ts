@@ -7,16 +7,19 @@ export class PlayerAvatar {
   private readonly rightArm = new THREE.Group();
   private readonly leftLeg = new THREE.Group();
   private readonly rightLeg = new THREE.Group();
+  private readonly readingBook = new THREE.Group();
   private readonly shirtMaterial = new THREE.MeshStandardMaterial({
     color: 0xf5f5f5,
     roughness: 0.72
   });
   private workingAtComputer = false;
+  private reading = false;
 
   public constructor() {
     this.group.name = "player";
     this.group.position.set(0.6, 0, 1.8);
     this.buildCharacter();
+    this.buildReadingBook();
   }
 
   public setPosition(x: number, z: number): void {
@@ -25,16 +28,21 @@ export class PlayerAvatar {
   }
 
   public setFacing(direction: THREE.Vector3): void {
-    if (direction.lengthSq() < 0.0001) {
-      return;
-    }
+    if (direction.lengthSq() < 0.0001) return;
 
-    this.group.rotation.y = Math.atan2(direction.x, direction.z);
+    // O rosto do modelo aponta para -Z. O cálculo anterior usava +Z e
+    // fazia o personagem andar visualmente de costas.
+    this.group.rotation.y = Math.atan2(-direction.x, -direction.z);
   }
 
   public updateWalkAnimation(time: number, moving: boolean): void {
     if (this.workingAtComputer) {
       this.updateComputerWorkAnimation(time);
+      return;
+    }
+
+    if (this.reading) {
+      this.updateReadingAnimation(time);
       return;
     }
 
@@ -50,6 +58,8 @@ export class PlayerAvatar {
 
   public setComputerWorkPose(active: boolean): void {
     this.workingAtComputer = active;
+    if (active) this.reading = false;
+    this.readingBook.visible = false;
 
     if (active) {
       this.group.rotation.y = 0;
@@ -61,17 +71,31 @@ export class PlayerAvatar {
       return;
     }
 
-    this.group.position.y = 0;
-    this.leftArm.rotation.x = 0;
-    this.rightArm.rotation.x = 0;
-    this.leftLeg.rotation.x = 0;
-    this.rightLeg.rotation.x = 0;
+    this.resetPose();
+  }
+
+  public setReadingPose(active: boolean): void {
+    this.reading = active;
+    if (active) this.workingAtComputer = false;
+    this.readingBook.visible = active;
+
+    if (active) {
+      this.group.rotation.y = 0;
+      this.group.position.y = 0;
+      this.leftArm.rotation.x = 0.92;
+      this.rightArm.rotation.x = 0.92;
+      this.leftArm.rotation.z = -0.18;
+      this.rightArm.rotation.z = 0.18;
+      this.leftLeg.rotation.x = 0;
+      this.rightLeg.rotation.x = 0;
+      return;
+    }
+
+    this.resetPose();
   }
 
   public updateComputerWorkAnimation(time: number): void {
-    if (!this.workingAtComputer) {
-      return;
-    }
+    if (!this.workingAtComputer) return;
 
     const typing = Math.sin(time * 13) * 0.09;
     const alternateTyping = Math.sin(time * 13 + Math.PI) * 0.09;
@@ -84,11 +108,30 @@ export class PlayerAvatar {
     this.group.position.y = 0.48 + bodyMovement;
   }
 
+  public updateReadingAnimation(time: number): void {
+    if (!this.reading) return;
+
+    const breath = Math.sin(time * 2.1) * 0.012;
+    const pageMotion = Math.sin(time * 1.1) * 0.025;
+    this.group.position.y = breath;
+    this.leftArm.rotation.x = 0.92 + pageMotion;
+    this.rightArm.rotation.x = 0.92 - pageMotion;
+    this.readingBook.rotation.z = Math.sin(time * 0.8) * 0.015;
+  }
+
   public cycleOutfit(): void {
     const colors = [0xf5f5f5, 0xff0000, 0x181818, 0xd1d5db, 0x991b1b];
     const current = this.shirtMaterial.color.getHex();
     const nextIndex = (colors.indexOf(current) + 1) % colors.length;
     this.shirtMaterial.color.setHex(colors[nextIndex]);
+  }
+
+  private resetPose(): void {
+    this.group.position.y = 0;
+    this.leftArm.rotation.set(0, 0, 0);
+    this.rightArm.rotation.set(0, 0, 0);
+    this.leftLeg.rotation.set(0, 0, 0);
+    this.rightLeg.rotation.set(0, 0, 0);
   }
 
   private buildCharacter(): void {
@@ -173,6 +216,40 @@ export class PlayerAvatar {
       leftShoe,
       rightShoe
     );
+  }
+
+  private buildReadingBook(): void {
+    const coverMaterial = new THREE.MeshStandardMaterial({
+      color: 0xb91c1c,
+      roughness: 0.78
+    });
+    const pageMaterial = new THREE.MeshStandardMaterial({
+      color: 0xfffbeb,
+      roughness: 0.92
+    });
+
+    const leftCover = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 0.035, 0.54),
+      coverMaterial
+    );
+    leftCover.position.x = -0.21;
+    leftCover.rotation.z = 0.18;
+
+    const rightCover = leftCover.clone();
+    rightCover.position.x = 0.21;
+    rightCover.rotation.z = -0.18;
+
+    const pages = new THREE.Mesh(
+      new THREE.BoxGeometry(0.72, 0.025, 0.48),
+      pageMaterial
+    );
+    pages.position.y = 0.035;
+
+    this.readingBook.add(leftCover, rightCover, pages);
+    this.readingBook.position.set(0, 1.25, -0.48);
+    this.readingBook.rotation.x = -0.48;
+    this.readingBook.visible = false;
+    this.group.add(this.readingBook);
   }
 
   private createLimb(

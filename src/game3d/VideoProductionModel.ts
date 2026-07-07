@@ -1,6 +1,7 @@
 import { EDITING_BLOCKS, FORMATS, THEMES, THUMBNAILS } from "../game/videoData";
 import type {
   EditingBlockId,
+  FormatId,
   FormatOption,
   PlayerState,
   ProductionStageId,
@@ -29,6 +30,33 @@ const CONNECTORS: ConnectorStyle[] = [
   { shape: "hexagon", color: "#42e8b4" }
 ];
 
+const EDITING_CHALLENGES: Record<FormatId, EditingBlockId[][]> = {
+  short: [
+    ["hook", "highlight", "development", "cta", "context"],
+    ["highlight", "hook", "context", "development", "cta"],
+    ["hook", "context", "cta", "highlight", "development"],
+    ["hook", "development", "highlight", "context", "cta"]
+  ],
+  standard: [
+    ["hook", "context", "development", "highlight", "cta"],
+    ["highlight", "hook", "context", "development", "cta"],
+    ["hook", "context", "cta", "development", "highlight"],
+    ["hook", "development", "context", "highlight", "cta"]
+  ],
+  review: [
+    ["hook", "context", "development", "highlight", "cta"],
+    ["highlight", "hook", "context", "development", "cta"],
+    ["hook", "context", "development", "cta", "highlight"],
+    ["context", "hook", "development", "highlight", "cta"]
+  ],
+  documentary: [
+    ["hook", "context", "development", "highlight", "cta"],
+    ["highlight", "hook", "context", "development", "cta"],
+    ["hook", "context", "highlight", "development", "cta"],
+    ["hook", "context", "cta", "development", "highlight"]
+  ]
+};
+
 const DEFAULT_MODIFIERS: ProgressionModifiers = {
   qualityCeiling: 62,
   qualityConsistency: 0.4,
@@ -51,13 +79,46 @@ const DEFAULT_MODIFIERS: ProgressionModifiers = {
 };
 
 export function createVideoDraft(): VideoDraft {
+  const editingIdealOrder = createEditingChallenge("standard");
   return {
     themeId: null,
     formatId: null,
     title: "",
     thumbnailId: null,
-    editingOrder: shuffle(EDITING_BLOCKS.map((block) => block.id))
+    editingIdealOrder,
+    editingOrder: createShuffledEditingOrder(editingIdealOrder)
   };
+}
+
+export function createEditingChallenge(formatId: FormatId): EditingBlockId[] {
+  const variants = EDITING_CHALLENGES[formatId];
+  const selected = variants[Math.floor(Math.random() * variants.length)];
+  return [...selected];
+}
+
+export function createShuffledEditingOrder(
+  idealOrder: EditingBlockId[]
+): EditingBlockId[] {
+  const shuffled = shuffle(EDITING_BLOCKS.map((block) => block.id));
+  if (shuffled.every((blockId, index) => blockId === idealOrder[index])) {
+    [shuffled[0], shuffled[1]] = [shuffled[1], shuffled[0]];
+  }
+  return shuffled;
+}
+
+export function getEditingIdealOrder(
+  draft: VideoDraft,
+  format: FormatOption
+): EditingBlockId[] {
+  const order = draft.editingIdealOrder;
+  if (
+    order &&
+    order.length === EDITING_BLOCKS.length &&
+    EDITING_BLOCKS.every((block) => order.includes(block.id))
+  ) {
+    return order;
+  }
+  return format.idealOrder;
 }
 
 export function validateVideoDraft(
@@ -159,17 +220,19 @@ export function getTotalProductionHours(
 }
 
 export function getConnector(
+  draft: VideoDraft,
   format: FormatOption,
   blockId: EditingBlockId,
   side: "left" | "right"
 ): ConnectorStyle | null {
-  const idealIndex = format.idealOrder.indexOf(blockId);
+  const idealOrder = getEditingIdealOrder(draft, format);
+  const idealIndex = idealOrder.indexOf(blockId);
 
   if (side === "left") {
     return idealIndex > 0 ? CONNECTORS[idealIndex - 1] : null;
   }
 
-  return idealIndex < format.idealOrder.length - 1
+  return idealIndex < idealOrder.length - 1
     ? CONNECTORS[idealIndex]
     : null;
 }
@@ -180,22 +243,34 @@ export function isConnectorMatched(
   currentIndex: number,
   side: "left" | "right"
 ): boolean {
+  const idealOrder = getEditingIdealOrder(draft, format);
   const current = draft.editingOrder[currentIndex];
-  const currentIdealIndex = format.idealOrder.indexOf(current);
+  const currentIdealIndex = idealOrder.indexOf(current);
 
   if (side === "left") {
     const previous = draft.editingOrder[currentIndex - 1];
     return (
       previous !== undefined &&
-      format.idealOrder.indexOf(previous) === currentIdealIndex - 1
+      idealOrder.indexOf(previous) === currentIdealIndex - 1
     );
   }
 
   const next = draft.editingOrder[currentIndex + 1];
   return (
     next !== undefined &&
-    format.idealOrder.indexOf(next) === currentIdealIndex + 1
+    idealOrder.indexOf(next) === currentIdealIndex + 1
   );
+}
+
+export function getMatchedConnectorCount(
+  draft: VideoDraft,
+  format: FormatOption
+): number {
+  let matched = 0;
+  for (let index = 0; index < draft.editingOrder.length - 1; index += 1) {
+    if (isConnectorMatched(draft, format, index, "right")) matched += 1;
+  }
+  return matched;
 }
 
 export function calculateHiddenVideoResult(
@@ -292,17 +367,18 @@ function calculateEditingScore(
   draft: VideoDraft,
   format: FormatOption
 ): number {
+  const idealOrder = getEditingIdealOrder(draft, format);
   let score = 20;
 
   draft.editingOrder.forEach((blockId, index) => {
-    if (blockId === format.idealOrder[index]) score += 12;
+    if (blockId === idealOrder[index]) score += 12;
   });
 
   for (let index = 0; index < draft.editingOrder.length - 1; index += 1) {
     const current = draft.editingOrder[index];
     const next = draft.editingOrder[index + 1];
-    const idealIndex = format.idealOrder.indexOf(current);
-    if (format.idealOrder[idealIndex + 1] === next) score += 5;
+    const idealIndex = idealOrder.indexOf(current);
+    if (idealOrder[idealIndex + 1] === next) score += 5;
   }
 
   return clamp(score, 0, 100);

@@ -194,7 +194,7 @@ export class PauseMenuController {
       </header>
       <section class="new-story-warning">
         <strong>O que será reiniciado</strong>
-        <div><span>Canal, vídeos e inscritos</span><span>Dinheiro, contas e faculdade</span><span>Quarto, equipamentos e cursos</span><span>Livros, idade e calendário</span></div>
+        <div><span>Canal, vídeos e inscritos</span><span>Dinheiro, contas e faculdade</span><span>Quarto, equipamentos e cursos</span><span>Livros, vida, idade e calendário</span></div>
         <p>Esta ação não pode ser desfeita pelo menu do jogo.</p>
       </section>
       <section class="pause-confirm-actions">
@@ -208,6 +208,7 @@ export class PauseMenuController {
       this.renderMain();
     });
     this.panel.querySelector("#pause-confirm-new")?.addEventListener("click", () => {
+      localStorage.removeItem("creator-life-health-v1");
       this.host.onNewStory();
     });
   }

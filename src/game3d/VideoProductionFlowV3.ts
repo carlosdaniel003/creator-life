@@ -8,7 +8,13 @@ import type {
   VideoResult
 } from "../game/types";
 import {
+  createEditingBlockPresentations,
+  type EditingBlockPresentation
+} from "./EditingChallenge";
+import {
   calculateHiddenVideoResult,
+  createEditingChallenge,
+  createShuffledEditingOrder,
   createVideoDraft,
   getProductionStages,
   type ProductionStage,
@@ -40,7 +46,12 @@ export class VideoProductionFlowV3 {
   private readonly panel: HTMLElement;
   private readonly host: ProductionHost;
   private draft: VideoDraft = createVideoDraft();
+  private blockPresentations: Record<
+    EditingBlockId,
+    EditingBlockPresentation
+  > = createEditingBlockPresentations();
   private draggedBlockId: EditingBlockId | null = null;
+  private selectedBlockId: EditingBlockId | null = null;
   private opened = false;
   private starting = false;
 
@@ -78,7 +89,10 @@ export class VideoProductionFlowV3 {
 
     this.opened = true;
     this.starting = false;
+    this.draggedBlockId = null;
+    this.selectedBlockId = null;
     this.draft = createVideoDraft();
+    this.blockPresentations = createEditingBlockPresentations();
     this.host.onOpenChange(true);
     this.overlay.classList.add("is-visible");
     this.overlay.setAttribute("aria-hidden", "false");
@@ -90,9 +104,14 @@ export class VideoProductionFlowV3 {
     if (!this.opened || this.starting) return;
     this.opened = false;
     this.draggedBlockId = null;
+    this.selectedBlockId = null;
     this.overlay.classList.remove("is-visible");
     this.overlay.setAttribute("aria-hidden", "true");
     this.host.onOpenChange(false);
+  }
+
+  public isOpen(): boolean {
+    return this.opened;
   }
 
   public handleEscape(): boolean {
@@ -113,13 +132,8 @@ export class VideoProductionFlowV3 {
     );
     this.bindPlannerEvents();
 
-    if (preserveScroll && previousScroll > 0) {
-      requestAnimationFrame(() => {
-        const scrollArea = this.panel.querySelector<HTMLElement>(
-          ".production-scroll"
-        );
-        if (scrollArea) scrollArea.scrollTop = previousScroll;
-      });
+    if (preserveScroll) {
+      this.restoreScroll(previousScroll, 0, false);
     }
   }
 
@@ -133,7 +147,15 @@ export class VideoProductionFlowV3 {
 
     this.panel.querySelectorAll<HTMLElement>("[data-format-id]").forEach((card) => {
       card.addEventListener("click", () => {
-        this.draft.formatId = card.dataset.formatId as VideoDraft["formatId"];
+        const nextFormatId = card.dataset.formatId as FormatOption["id"];
+        if (this.draft.formatId !== nextFormatId) {
+          this.draft.formatId = nextFormatId;
+          const idealOrder = createEditingChallenge(nextFormatId);
+          this.draft.editingIdealOrder = idealOrder;
+          this.draft.editingOrder = createShuffledEditingOrder(idealOrder);
+          this.blockPresentations = createEditingBlockPresentations();
+          this.selectedBlockId = null;
+        }
         this.renderPlanner(true);
       });
     });
@@ -170,27 +192,46 @@ export class VideoProductionFlowV3 {
         this.host.getProgressionModifiers()
       );
       if (error) this.renderPlanner(true, error);
-      else this.renderEditor();
+      else this.renderEditor(false);
     });
   }
 
-  private renderEditor(): void {
+  private renderEditor(preserveScroll = true): void {
     const format = FORMATS.find((item) => item.id === this.draft.formatId);
     if (!format) {
       this.renderPlanner(false, "Formato inválido.");
       return;
     }
 
-    this.panel.innerHTML = renderEditorView(this.draft, format);
+    const scrollArea = this.panel.querySelector<HTMLElement>(".production-scroll");
+    const timeline = this.panel.querySelector<HTMLElement>(".editing-timeline");
+    const previousScroll = preserveScroll ? scrollArea?.scrollTop ?? 0 : 0;
+    const previousHorizontalScroll = preserveScroll
+      ? timeline?.scrollLeft ?? 0
+      : 0;
+
+    this.panel.innerHTML = renderEditorView(
+      this.draft,
+      format,
+      this.blockPresentations,
+      this.selectedBlockId
+    );
     const startButton = this.panel.querySelector<HTMLButtonElement>(
       "#start-production"
     );
     if (startButton) startButton.textContent = "Produzir e publicar";
     this.bindEditorEvents();
+
+    if (preserveScroll) {
+      this.restoreScroll(previousScroll, previousHorizontalScroll, true);
+    }
   }
 
   private bindEditorEvents(): void {
-    this.panel.querySelector("#back-to-planner")?.addEventListener("click", () => this.renderPlanner(false));
+    this.panel.querySelector("#back-to-planner")?.addEventListener("click", () => {
+      this.selectedBlockId = null;
+      this.renderPlanner(false);
+    });
     this.panel.querySelector("#start-production")?.addEventListener("click", () => void this.startProduction());
 
     this.panel.querySelectorAll<HTMLElement>("[data-block-id]").forEach((card) => {
@@ -199,32 +240,60 @@ export class VideoProductionFlowV3 {
       card.addEventListener("dragstart", (event) => {
         this.draggedBlockId = blockId;
         card.classList.add("is-dragging");
-        event.dataTransfer?.setData("text/plain", blockId);
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", blockId);
+        }
       });
       card.addEventListener("dragend", () => {
         this.draggedBlockId = null;
         card.classList.remove("is-dragging");
+        this.panel
+          .querySelectorAll(".is-drop-target")
+          .forEach((target) => target.classList.remove("is-drop-target"));
       });
       card.addEventListener("dragover", (event) => {
         event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
         card.classList.add("is-drop-target");
       });
       card.addEventListener("dragleave", () => card.classList.remove("is-drop-target"));
       card.addEventListener("drop", (event) => {
         event.preventDefault();
+        event.stopPropagation();
         card.classList.remove("is-drop-target");
-        const dragged = this.draggedBlockId ?? (event.dataTransfer?.getData("text/plain") as EditingBlockId);
+        const dragged = this.draggedBlockId ??
+          (event.dataTransfer?.getData("text/plain") as EditingBlockId);
         if (!dragged || dragged === blockId) return;
-        this.moveBlockBefore(dragged, blockId);
-        this.renderEditor();
+        this.swapBlocks(dragged, blockId);
+        this.draggedBlockId = null;
+        this.selectedBlockId = null;
+        this.renderEditor(true);
       });
 
       card.querySelectorAll<HTMLButtonElement>("[data-move]").forEach((button) => {
-        button.addEventListener("click", () => {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          this.selectedBlockId = null;
           this.moveBlockBy(blockId, Number(button.dataset.move));
-          this.renderEditor();
+          this.renderEditor(true);
         });
       });
+
+      card
+        .querySelector<HTMLButtonElement>("[data-select-block]")
+        ?.addEventListener("click", (event) => {
+          event.stopPropagation();
+          if (this.selectedBlockId === null) {
+            this.selectedBlockId = blockId;
+          } else if (this.selectedBlockId === blockId) {
+            this.selectedBlockId = null;
+          } else {
+            this.swapBlocks(this.selectedBlockId, blockId);
+            this.selectedBlockId = null;
+          }
+          this.renderEditor(true);
+        });
     });
   }
 
@@ -269,15 +338,25 @@ export class VideoProductionFlowV3 {
     this.starting = false;
   }
 
-  private moveBlockBefore(draggedId: EditingBlockId, targetId: EditingBlockId): void {
-    const nextOrder = this.draft.editingOrder.filter((id) => id !== draggedId);
-    nextOrder.splice(nextOrder.indexOf(targetId), 0, draggedId);
+  private swapBlocks(firstId: EditingBlockId, secondId: EditingBlockId): void {
+    const firstIndex = this.draft.editingOrder.indexOf(firstId);
+    const secondIndex = this.draft.editingOrder.indexOf(secondId);
+    if (firstIndex < 0 || secondIndex < 0 || firstIndex === secondIndex) return;
+
+    const nextOrder = [...this.draft.editingOrder];
+    [nextOrder[firstIndex], nextOrder[secondIndex]] = [
+      nextOrder[secondIndex],
+      nextOrder[firstIndex]
+    ];
     this.draft.editingOrder = nextOrder;
   }
 
   private moveBlockBy(blockId: EditingBlockId, direction: number): void {
     const currentIndex = this.draft.editingOrder.indexOf(blockId);
-    const nextIndex = Math.max(0, Math.min(this.draft.editingOrder.length - 1, currentIndex + direction));
+    const nextIndex = Math.max(
+      0,
+      Math.min(this.draft.editingOrder.length - 1, currentIndex + direction)
+    );
     if (currentIndex === nextIndex) return;
 
     const nextOrder = [...this.draft.editingOrder];
@@ -287,7 +366,35 @@ export class VideoProductionFlowV3 {
     this.draft.editingOrder = nextOrder;
   }
 
+  private restoreScroll(
+    verticalScroll: number,
+    horizontalScroll: number,
+    includeTimeline: boolean
+  ): void {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const scrollArea = this.panel.querySelector<HTMLElement>(
+          ".production-scroll"
+        );
+        if (scrollArea) scrollArea.scrollTop = verticalScroll;
+
+        if (includeTimeline) {
+          const timeline = this.panel.querySelector<HTMLElement>(
+            ".editing-timeline"
+          );
+          if (timeline) timeline.scrollLeft = horizontalScroll;
+        }
+      });
+    });
+  }
+
   private cloneDraft(): VideoDraft {
-    return { ...this.draft, editingOrder: [...this.draft.editingOrder] };
+    return {
+      ...this.draft,
+      editingOrder: [...this.draft.editingOrder],
+      editingIdealOrder: this.draft.editingIdealOrder
+        ? [...this.draft.editingIdealOrder]
+        : undefined
+    };
   }
 }

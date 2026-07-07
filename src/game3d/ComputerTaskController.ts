@@ -7,26 +7,21 @@ import type { PlayerAvatar } from "./PlayerAvatar";
 interface GameRuntime3D {
   container: HTMLElement;
   scene: THREE.Scene;
-  renderer: THREE.WebGLRenderer;
   camera: THREE.OrthographicCamera;
   player: PlayerAvatar;
   state: PlayerState;
   modalOpen: boolean;
   keys: Set<string>;
-  renderHud: () => void;
 }
 
 export class ComputerTaskController {
-  private readonly runtime: GameRuntime3D;
   private readonly worldLayer: HTMLElement;
   private readonly taskCard: HTMLElement;
   private readonly gainStack: HTMLElement;
   private readonly anchor = new THREE.Vector3(2.9, 2.85, -3.45);
   private active = false;
-  private frameId = 0;
 
-  public constructor(runtime: GameRuntime3D) {
-    this.runtime = runtime;
+  public constructor(private readonly runtime: GameRuntime3D) {
     this.worldLayer = document.createElement("div");
     this.worldLayer.className = "computer-world-layer";
     this.worldLayer.innerHTML = `
@@ -43,7 +38,7 @@ export class ComputerTaskController {
       </section>
       <div class="computer-gain-stack" aria-live="polite"></div>
     `;
-    runtime.container.append(this.worldLayer);
+    this.runtime.container.append(this.worldLayer);
 
     this.taskCard = this.requireElement(".computer-task-card");
     this.gainStack = this.requireElement(".computer-gain-stack");
@@ -56,35 +51,39 @@ export class ComputerTaskController {
     advanceStage: (hours: number) => void,
     onPublished: () => void
   ): Promise<void> {
-    if (this.active) {
-      return;
-    }
+    if (this.active) return;
 
     this.active = true;
     this.runtime.modalOpen = true;
     this.runtime.keys.clear();
-    this.runtime.player.setPosition(2.9, -2.18);
-    this.runtime.player.setComputerWorkPose(true);
     this.taskCard.classList.add("is-visible");
+    this.showTravelState();
 
-    for (let index = 0; index < stages.length; index += 1) {
-      const stage = stages[index];
-      await this.animateStage(stage, index, stages.length);
-      advanceStage(stage.hours);
+    try {
+      await this.runtime.player.walkTo(2.9, -1.86, 1050);
+      this.runtime.player.setPosition(2.9, -2.18);
+      this.runtime.player.setComputerWorkPose(true);
+
+      for (let index = 0; index < stages.length; index += 1) {
+        const stage = stages[index];
+        await this.animateStage(stage, index, stages.length);
+        advanceStage(stage.hours);
+      }
+
+      onPublished();
+      this.showMessage(
+        "Vídeo publicado",
+        "O upload terminou e o vídeo já está no canal.",
+        "published"
+      );
+    } finally {
+      this.taskCard.classList.remove("is-visible");
+      this.runtime.player.setComputerWorkPose(false);
+      this.runtime.player.setPosition(2.9, -1.86);
+      this.runtime.modalOpen = false;
+      this.active = false;
+      this.applyDayPhase(this.runtime.state.hour);
     }
-
-    onPublished();
-    this.taskCard.classList.remove("is-visible");
-    this.runtime.player.setComputerWorkPose(false);
-    this.runtime.player.setPosition(2.9, -1.86);
-    this.runtime.modalOpen = false;
-    this.active = false;
-    this.applyDayPhase(this.runtime.state.hour);
-    this.showMessage(
-      "Vídeo publicado",
-      "O upload terminou e o vídeo já está no canal.",
-      "published"
-    );
   }
 
   public showChannelGain(gain: ChannelGain): void {
@@ -97,15 +96,24 @@ export class ComputerTaskController {
       gain.revenue >= 0.01 ? `+R$ ${gain.revenue.toFixed(2)}` : null
     ].filter((item): item is string => item !== null);
 
-    if (parts.length === 0) {
-      return;
+    if (parts.length > 0) {
+      this.showMessage(gain.sourceTitle, parts.join(" · "), "gain");
     }
-
-    this.showMessage(gain.sourceTitle, parts.join(" · "), "gain");
   }
 
   public showMilestone(title: string, detail: string): void {
     this.showMessage(title, detail, "milestone");
+  }
+
+  private showTravelState(): void {
+    this.requireElement("#computer-task-label").textContent =
+      "Indo até o computador";
+    this.requireElement("#computer-task-step").textContent =
+      "Preparando a estação";
+    this.requireElement("#computer-task-progress").style.width = "4%";
+    this.requireElement("#computer-task-time").textContent = this.formatHour(
+      this.runtime.state.hour
+    );
   }
 
   private animateStage(
@@ -126,7 +134,6 @@ export class ComputerTaskController {
 
     return new Promise((resolve) => {
       const startedAt = performance.now();
-
       const update = (now: number): void => {
         const progress = Math.min(1, (now - startedAt) / stage.durationMs);
         const previewHour = startingHour + stage.hours * progress;
@@ -137,11 +144,8 @@ export class ComputerTaskController {
         this.runtime.player.updateComputerWorkAnimation(now / 1000);
         this.applyDayPhase(previewHour);
 
-        if (progress < 1) {
-          requestAnimationFrame(update);
-        } else {
-          resolve();
-        }
+        if (progress < 1) requestAnimationFrame(update);
+        else resolve();
       };
 
       requestAnimationFrame(update);
@@ -174,12 +178,9 @@ export class ComputerTaskController {
     const projected = this.anchor.clone().project(this.runtime.camera);
     const width = this.runtime.container.clientWidth;
     const height = this.runtime.container.clientHeight;
-    const x = (projected.x * 0.5 + 0.5) * width;
-    const y = (-projected.y * 0.5 + 0.5) * height;
-
-    this.worldLayer.style.left = `${x}px`;
-    this.worldLayer.style.top = `${y}px`;
-    this.frameId = requestAnimationFrame(() => this.updateWorldLayer());
+    this.worldLayer.style.left = `${(projected.x * 0.5 + 0.5) * width}px`;
+    this.worldLayer.style.top = `${(-projected.y * 0.5 + 0.5) * height}px`;
+    requestAnimationFrame(() => this.updateWorldLayer());
   }
 
   private applyDayPhase(hourValue: number): void {
@@ -189,9 +190,10 @@ export class ComputerTaskController {
       0,
       1
     );
-    const nightColor = new THREE.Color(0x172033);
-    const dayColor = new THREE.Color(0x93a9bd);
-    const background = nightColor.clone().lerp(dayColor, daylight);
+    const background = new THREE.Color(0x172033).lerp(
+      new THREE.Color(0x93a9bd),
+      daylight
+    );
 
     this.runtime.scene.background = background;
     if (this.runtime.scene.fog instanceof THREE.Fog) {
@@ -217,26 +219,17 @@ export class ComputerTaskController {
 
   private applyYouTubePalette(): void {
     this.runtime.scene.traverse((object) => {
-      if (!(object instanceof THREE.Mesh)) {
-        return;
-      }
+      if (!(object instanceof THREE.Mesh)) return;
 
       const materials = Array.isArray(object.material)
         ? object.material
         : [object.material];
-
       materials.forEach((material) => {
-        if (!(material instanceof THREE.MeshStandardMaterial)) {
-          return;
-        }
-
-        const color = material.color.getHex();
-        if ([0x0ea5e9, 0x22d3ee, 0x42e8b4].includes(color)) {
+        if (!(material instanceof THREE.MeshStandardMaterial)) return;
+        if ([0x0ea5e9, 0x22d3ee, 0x42e8b4].includes(material.color.getHex())) {
           material.color.setHex(0xff0000);
         }
-
-        const emissive = material.emissive.getHex();
-        if ([0x075985, 0x0891b2].includes(emissive)) {
+        if ([0x075985, 0x0891b2].includes(material.emissive.getHex())) {
           material.emissive.setHex(0x8b0000);
         }
       });
@@ -256,7 +249,6 @@ export class ComputerTaskController {
       ) {
         const context = image.getContext("2d");
         if (!context) return;
-
         context.clearRect(0, 0, image.width, image.height);
         context.fillStyle = "#ffffff";
         context.fillRect(0, 0, image.width, image.height);

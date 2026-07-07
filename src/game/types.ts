@@ -2,12 +2,16 @@ export type ThemeId = "games" | "technology" | "vlog" | "tutorial" | "challenge"
 export type FormatId = "short" | "standard" | "review" | "documentary";
 export type ThumbnailId = "expressive" | "clean" | "big-text" | "scene";
 export type EditingBlockId = "hook" | "context" | "development" | "highlight" | "cta";
+export type BillId = "rent" | "internet" | "electricity" | "college";
+export type BillStatus = "scheduled" | "pending" | "paid";
+export type TransactionType = "income" | "expense";
 
 export interface PlayerState {
   day: number;
   hour: number;
   energy: number;
   hunger: number;
+  thirst: number;
   creativity: number;
   money: number;
   subscribers: number;
@@ -91,6 +95,7 @@ export interface PublishedVideo {
   evergreenFactor: number;
   trendFactor: number;
   viralFactor: number;
+  cadenceFactor: number;
   totalViews: number;
   totalLikes: number;
   totalSubscribers: number;
@@ -116,8 +121,42 @@ export interface ChannelSimulationSave {
   lastSavedAt: number;
 }
 
+export interface BillEntry {
+  uid: string;
+  id: BillId;
+  label: string;
+  baseAmount: number;
+  dueDay: number;
+  dueMonth: number;
+  dueAbsoluteDay: number;
+  status: BillStatus;
+  paidAbsoluteDay: number | null;
+}
+
+export interface FinanceTransaction {
+  id: string;
+  day: number;
+  hour: number;
+  type: TransactionType;
+  label: string;
+  amount: number;
+}
+
+export interface LifeSimulationSave {
+  bills: BillEntry[];
+  transactions: FinanceTransaction[];
+  collegeGrade: number;
+  studyHoursThisWeek: number;
+  evaluatedWeek: number;
+  freelanceJobs: number;
+  totalExpenses: number;
+  totalFreelanceIncome: number;
+  lastProcessedDay: number;
+}
+
 export interface CreatorLifeSave {
-  version: 2;
+  version: 3;
   state: PlayerState;
   channel: ChannelSimulationSave;
+  life: LifeSimulationSave;
 }

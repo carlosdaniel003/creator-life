@@ -80,7 +80,11 @@ export class ComputerTaskController {
     this.runtime.modalOpen = false;
     this.active = false;
     this.applyDayPhase(this.runtime.state.hour);
-    this.showMessage("Vídeo publicado", "O upload terminou e o vídeo já está no canal.", "published");
+    this.showMessage(
+      "Vídeo publicado",
+      "O upload terminou e o vídeo já está no canal.",
+      "published"
+    );
   }
 
   public showChannelGain(gain: ChannelGain): void {
@@ -113,6 +117,7 @@ export class ComputerTaskController {
     const progressBar = this.requireElement("#computer-task-progress");
     const step = this.requireElement("#computer-task-step");
     const time = this.requireElement("#computer-task-time");
+    const hudTime = document.getElementById("hud-time");
     const startingHour = this.runtime.state.hour;
 
     label.textContent = stage.label;
@@ -125,8 +130,10 @@ export class ComputerTaskController {
       const update = (now: number): void => {
         const progress = Math.min(1, (now - startedAt) / stage.durationMs);
         const previewHour = startingHour + stage.hours * progress;
+        const formattedHour = this.formatHour(previewHour);
         progressBar.style.width = `${Math.round(progress * 100)}%`;
-        time.textContent = this.formatHour(previewHour);
+        time.textContent = formattedHour;
+        if (hudTime) hudTime.textContent = formattedHour;
         this.runtime.player.updateComputerWorkAnimation(now / 1000);
         this.applyDayPhase(previewHour);
 
@@ -202,7 +209,10 @@ export class ComputerTaskController {
       }
     });
 
-    this.runtime.container.style.setProperty("--room-daylight", daylight.toFixed(3));
+    this.runtime.container.style.setProperty(
+      "--room-daylight",
+      daylight.toFixed(3)
+    );
   }
 
   private applyYouTubePalette(): void {
@@ -234,10 +244,12 @@ export class ComputerTaskController {
       const material = Array.isArray(object.material)
         ? object.material[0]
         : object.material;
-      const map = material instanceof THREE.MeshBasicMaterial ? material.map : null;
+      const map =
+        material instanceof THREE.MeshBasicMaterial ? material.map : null;
       const image = map?.image;
 
       if (
+        map &&
         image instanceof HTMLCanvasElement &&
         object.geometry instanceof THREE.PlaneGeometry &&
         Math.abs(object.geometry.parameters.width - 1.25) < 0.01

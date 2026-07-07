@@ -1,0 +1,323 @@
+.game-modal:has(.channel-dashboard-hero) {
+  width: min(1180px, calc(100vw - 28px));
+  height: min(880px, calc(100dvh - 28px));
+  color: #171717;
+  background: #f5f5f5;
+}
+
+.game-modal:has(.channel-dashboard-hero) .game-modal__header,
+.game-modal:has(.channel-dashboard-hero) .game-modal__actions {
+  color: #171717;
+  background: #fff;
+}
+
+.game-modal:has(.channel-dashboard-hero) .game-modal__body {
+  color: #171717;
+  background: #f5f5f5;
+}
+
+.channel-dashboard-hero {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #e2e2e2;
+  border-radius: 15px;
+  background: #fff;
+}
+
+.channel-dashboard-hero > div:first-child {
+  display: grid;
+  max-width: 760px;
+  gap: 5px;
+}
+
+.channel-dashboard-hero span,
+.channel-funnel span,
+.channel-engine-grid span,
+.channel-section-heading span,
+.niche-authority-card span,
+.channel-improvement-guide article span {
+  color: #ff0000;
+  font-size: 0.57rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.channel-dashboard-hero h3,
+.channel-dashboard-hero p,
+.channel-section-heading h3,
+.channel-engine-grid p,
+.niche-authority-card p,
+.channel-improvement-guide article p {
+  margin: 0;
+}
+
+.channel-dashboard-hero p,
+.channel-engine-grid p,
+.niche-authority-card p,
+.channel-improvement-guide article p,
+.channel-funnel p {
+  color: #666;
+  font-size: 0.67rem;
+  line-height: 1.45;
+}
+
+.channel-dashboard-hero > div:last-child {
+  display: grid;
+  min-width: 180px;
+  place-content: center;
+  gap: 3px;
+  padding: 13px;
+  border-radius: 12px;
+  color: #fff;
+  background: #171717;
+  text-align: center;
+}
+
+.channel-dashboard-hero > div:last-child strong {
+  font-size: 1.2rem;
+}
+
+.channel-dashboard-hero > div:last-child span,
+.channel-dashboard-hero > div:last-child small {
+  color: #ddd;
+}
+
+.channel-funnel {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.channel-funnel article {
+  display: grid;
+  min-height: 150px;
+  align-content: start;
+  gap: 6px;
+  padding: 13px;
+  border: 1px solid #e2e2e2;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.channel-funnel strong {
+  font-size: 1.15rem;
+}
+
+.channel-funnel small {
+  min-height: 29px;
+  color: #777;
+  font-size: 0.59rem;
+}
+
+.channel-funnel p {
+  margin: auto 0 0;
+  padding-top: 8px;
+  border-top: 1px solid #ededed;
+}
+
+.channel-engine-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.channel-engine-grid article,
+.niche-authority-card,
+.channel-improvement-guide article {
+  display: grid;
+  gap: 6px;
+  padding: 13px;
+  border: 1px solid #e2e2e2;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.channel-engine-grid strong {
+  font-size: 1rem;
+}
+
+.niche-dashboard,
+.channel-improvement-guide,
+.channel-video-catalog {
+  display: grid;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.channel-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.channel-section-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.channel-section-heading small {
+  max-width: 470px;
+  color: #6f6f6f;
+  font-size: 0.62rem;
+  text-align: right;
+}
+
+.niche-authority-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.niche-authority-card > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.niche-authority-card strong {
+  font-size: 0.75rem;
+}
+
+.niche-authority-track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7e7e7;
+}
+
+.niche-authority-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #b91c1c, #ff0000);
+}
+
+.channel-improvement-guide > div:last-child {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.channel-improvement-guide article strong {
+  font-size: 0.72rem;
+}
+
+.channel-video-card {
+  grid-template-columns: 145px minmax(0, 1fr);
+}
+
+.channel-video-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 5px 0;
+}
+
+.channel-video-tags span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: #8b0000;
+  background: #fff0f0;
+  font-size: 0.53rem;
+  font-weight: 800;
+}
+
+.channel-video-metrics {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.channel-dashboard-empty {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  min-height: 260px;
+  margin-top: 12px;
+  padding: 24px;
+  border: 1px dashed #d2d2d2;
+  border-radius: 14px;
+  background: #fff;
+  text-align: center;
+}
+
+.channel-dashboard-empty p {
+  max-width: 520px;
+  margin: 0;
+  color: #666;
+  font-size: 0.72rem;
+}
+
+.channel-dashboard-empty > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.channel-dashboard-empty span {
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #8b0000;
+  background: #fff0f0;
+  font-size: 0.6rem;
+  font-weight: 800;
+}
+
+@media (max-width: 1080px) {
+  .channel-funnel {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .channel-engine-grid,
+  .channel-improvement-guide > div:last-child {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .niche-authority-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .channel-video-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .channel-dashboard-hero {
+    flex-direction: column;
+  }
+
+  .channel-dashboard-hero > div:last-child {
+    min-width: 0;
+  }
+
+  .channel-funnel,
+  .channel-engine-grid,
+  .niche-authority-grid,
+  .channel-improvement-guide > div:last-child {
+    grid-template-columns: 1fr;
+  }
+
+  .channel-section-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .channel-section-heading small {
+    text-align: left;
+  }
+
+  .channel-video-card {
+    grid-template-columns: 1fr;
+  }
+
+  .channel-video-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

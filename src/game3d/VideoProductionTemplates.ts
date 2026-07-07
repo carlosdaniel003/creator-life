@@ -1,11 +1,14 @@
 import { EDITING_BLOCKS, FORMATS, THEMES, THUMBNAILS } from "../game/videoData";
 import type {
+  EditingBlockId,
   FormatOption,
   PlayerState,
   VideoDraft
 } from "../game/types";
+import type { EditingBlockPresentation } from "./EditingChallenge";
 import {
   getConnector,
+  getMatchedConnectorCount,
   getProductionStages,
   getTotalProductionHours,
   isConnectorMatched,
@@ -44,7 +47,7 @@ export function renderPlannerView(
       <section class="production-section">
         <div class="production-section__heading">
           <div><span>ETAPA 2</span><h3>Escolha o formato</h3></div>
-          <small>O formato altera duração, esforço e comportamento do público.</small>
+          <small>O formato altera duração, esforço e o quebra-cabeça da edição.</small>
         </div>
         <div class="choice-grid choice-grid--formats">
           ${FORMATS.map(
@@ -107,13 +110,19 @@ export function renderPlannerView(
 
 export function renderEditorView(
   draft: VideoDraft,
-  format: FormatOption
+  format: FormatOption,
+  presentations: Record<EditingBlockId, EditingBlockPresentation>,
+  selectedBlockId: EditingBlockId | null
 ): string {
   const theme = THEMES.find((item) => item.id === draft.themeId);
   const thumbnail = THUMBNAILS.find((item) => item.id === draft.thumbnailId);
+  const matchedConnections = getMatchedConnectorCount(draft, format);
+  const selectedPresentation = selectedBlockId
+    ? presentations[selectedBlockId]
+    : null;
 
   return `
-    ${renderHeader(2, "Mesa de edição", "Os encaixes mostram transições coerentes, mas não revelam a qualidade final.")}
+    ${renderHeader(2, "Mesa de edição", "A ordem correta muda entre produções. Use os encaixes, não o nome das peças.")}
     <div class="production-scroll editor-layout">
       <section class="video-summary-card">
         <div class="video-summary-card__thumbnail" style="--thumbnail-accent:${toHex(thumbnail?.color ?? 0x38bdf8)}">
@@ -131,16 +140,39 @@ export function renderEditorView(
 
       <section class="editing-workspace editing-workspace--mystery">
         <div class="editing-workspace__header">
-          <div><span>LINHA DO TEMPO</span><h3>Encaixe as partes como um quebra-cabeça</h3></div>
-          <div class="editing-mystery-status"><span>RESULTADO</span><strong>DESCONHECIDO</strong><small>A resposta virá do público.</small></div>
+          <div><span>LINHA DO TEMPO</span><h3>Monte uma sequência de transições coerentes</h3></div>
+          <div class="editing-mystery-status ${matchedConnections === 4 ? "is-complete" : ""}">
+            <span>CONEXÕES ESTÁVEIS</span>
+            <strong>${matchedConnections}/4</strong>
+            <small>${matchedConnections === 4 ? "Todas as bordas encaixaram." : "A qualidade final continua oculta."}</small>
+          </div>
         </div>
-        <div class="timeline-ruler">${draft.editingOrder.map((_, index) => `<span>Parte ${index + 1}</span>`).join("")}</div>
+        <div class="timeline-ruler">${draft.editingOrder.map((_, index) => `<span>Faixa ${index + 1}</span>`).join("")}</div>
         <div class="editing-timeline editing-timeline--puzzle">
-          ${draft.editingOrder.map((blockId, index) => renderPuzzleBlock(draft, format, blockId, index)).join("")}
+          ${draft.editingOrder
+            .map((blockId, index) =>
+              renderPuzzleBlock(
+                draft,
+                format,
+                blockId,
+                index,
+                presentations,
+                selectedBlockId
+              )
+            )
+            .join("")}
         </div>
-        <div class="editing-hint editing-hint--puzzle">
-          <strong>Procure cores e formatos iguais nas bordas.</strong>
-          <span>Peças compatíveis recebem um brilho quando ficam lado a lado.</span>
+        <div class="editing-hint editing-hint--puzzle ${selectedBlockId ? "is-selecting" : ""}">
+          <strong>${
+            selectedPresentation
+              ? `${selectedPresentation.code} selecionado`
+              : "Arraste uma peça sobre outra para trocar as posições."
+          }</strong>
+          <span>${
+            selectedBlockId
+              ? "Clique em TROCAR em uma segunda peça para concluir a troca."
+              : "Também é possível usar TROCAR ou as setas sem perder a rolagem."
+          }</span>
         </div>
       </section>
     </div>
@@ -211,21 +243,35 @@ function renderPuzzleBlock(
   draft: VideoDraft,
   format: FormatOption,
   blockId: VideoDraft["editingOrder"][number],
-  index: number
+  index: number,
+  presentations: Record<EditingBlockId, EditingBlockPresentation>,
+  selectedBlockId: EditingBlockId | null
 ): string {
   const block = EDITING_BLOCKS.find((item) => item.id === blockId);
   if (!block) return "";
 
-  const left = getConnector(format, blockId, "left");
-  const right = getConnector(format, blockId, "right");
+  const presentation = presentations[blockId] ?? {
+    label: block.shortLabel,
+    description: block.description,
+    code: `CLIP-${index + 1}`,
+    color: block.color
+  };
+  const left = getConnector(draft, format, blockId, "left");
+  const right = getConnector(draft, format, blockId, "right");
+  const selected = selectedBlockId === blockId;
 
   return `
-    <article class="editing-block puzzle-piece" draggable="true" data-block-id="${block.id}" style="--block-color:${toHex(block.color)}">
+    <article class="editing-block puzzle-piece ${selected ? "is-selected-for-swap" : ""}" draggable="true" data-block-id="${block.id}" style="--block-color:${toHex(presentation.color)}">
       ${left ? connectorHtml("left", left.shape, left.color, isConnectorMatched(draft, format, index, "left")) : '<span class="puzzle-edge puzzle-edge--flat puzzle-edge--left"></span>'}
       ${right ? connectorHtml("right", right.shape, right.color, isConnectorMatched(draft, format, index, "right")) : '<span class="puzzle-edge puzzle-edge--flat puzzle-edge--right"></span>'}
-      <span class="editing-block__number">${index + 1}</span><span class="editing-block__color"></span>
-      <strong>${block.shortLabel}</strong><p>${block.description}</p>
-      <div class="editing-block__controls"><button type="button" data-move="-1">←</button><span>ARRASTE</span><button type="button" data-move="1">→</button></div>
+      <div class="editing-block__identity"><span class="editing-block__code">${presentation.code}</span><span class="editing-block__number">${index + 1}</span></div>
+      <span class="editing-block__color"></span>
+      <strong>${presentation.label}</strong><p>${presentation.description}</p>
+      <div class="editing-block__controls">
+        <button type="button" data-move="-1" aria-label="Mover ${presentation.label} para a esquerda">←</button>
+        <button type="button" class="editing-block__swap" data-select-block="${block.id}">${selected ? "CANCELAR" : "TROCAR"}</button>
+        <button type="button" data-move="1" aria-label="Mover ${presentation.label} para a direita">→</button>
+      </div>
     </article>`;
 }
 

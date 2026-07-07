@@ -3,12 +3,14 @@ import type {
   EditingBlockId,
   FormatOption,
   PlayerState,
+  ProductionStageId,
+  ProgressionModifiers,
   VideoDraft,
   VideoResult
 } from "../game/types";
 
 export interface ProductionStage {
-  id: "planning" | "recording" | "editing" | "upload";
+  id: ProductionStageId;
   label: string;
   description: string;
   hours: number;
@@ -27,6 +29,27 @@ const CONNECTORS: ConnectorStyle[] = [
   { shape: "hexagon", color: "#42e8b4" }
 ];
 
+const DEFAULT_MODIFIERS: ProgressionModifiers = {
+  qualityCeiling: 62,
+  qualityConsistency: 0.4,
+  planningBonus: 0,
+  editingBonus: 0,
+  titleBonus: 0,
+  audioVisualBonus: 0,
+  stageTimeMultipliers: {
+    planning: 1,
+    recording: 1,
+    editing: 1,
+    upload: 1
+  },
+  energyCostMultiplier: 1,
+  freelanceIncomeMultiplier: 1,
+  bedRecoveryMultiplier: 1,
+  creativityRecoveryMultiplier: 1,
+  monthlyPowerCost: 0,
+  monthlyInternetSurcharge: 0
+};
+
 export function createVideoDraft(): VideoDraft {
   return {
     themeId: null,
@@ -39,7 +62,8 @@ export function createVideoDraft(): VideoDraft {
 
 export function validateVideoDraft(
   draft: VideoDraft,
-  state: PlayerState
+  state: PlayerState,
+  modifiers: ProgressionModifiers = DEFAULT_MODIFIERS
 ): string | null {
   if (!draft.themeId) return "Escolha o tema do vídeo.";
   if (!draft.formatId) return "Escolha o formato do vídeo.";
@@ -50,8 +74,11 @@ export function validateVideoDraft(
 
   const format = FORMATS.find((item) => item.id === draft.formatId);
   if (!format) return "Formato inválido.";
-  if (state.energy < format.energyCost) {
-    return `Este formato exige ${format.energyCost} de energia.`;
+  const energyCost = Math.ceil(
+    format.energyCost * modifiers.energyCostMultiplier
+  );
+  if (state.energy < energyCost) {
+    return `Este formato exige ${energyCost} de energia com sua estrutura atual.`;
   }
   if (state.creativity < format.creativityCost) {
     return `Este formato exige ${format.creativityCost} de criatividade.`;
@@ -60,7 +87,10 @@ export function validateVideoDraft(
   return null;
 }
 
-export function getProductionStages(format: FormatOption): ProductionStage[] {
+export function getProductionStages(
+  format: FormatOption,
+  modifiers: ProgressionModifiers = DEFAULT_MODIFIERS
+): ProductionStage[] {
   const timing: Record<FormatOption["id"], number[]> = {
     short: [1, 1, 1, 1],
     standard: [1, 2, 1, 1],
@@ -69,7 +99,7 @@ export function getProductionStages(format: FormatOption): ProductionStage[] {
   };
   const [planningHours, recordingHours, editingHours, uploadHours] =
     timing[format.id];
-  const multiplier =
+  const visualMultiplier =
     format.id === "documentary"
       ? 1.35
       : format.id === "review"
@@ -79,39 +109,50 @@ export function getProductionStages(format: FormatOption): ProductionStage[] {
           : 1;
 
   return [
-    {
-      id: "planning",
-      label: "Planejamento e roteiro",
-      description: "Organizando a ideia, os pontos principais e a sequência de gravação.",
-      hours: planningHours,
-      durationMs: Math.round(1350 * multiplier)
-    },
-    {
-      id: "recording",
-      label: "Gravação",
-      description: "Capturando cenas, refazendo trechos e registrando a apresentação.",
-      hours: recordingHours,
-      durationMs: Math.round(2300 * multiplier)
-    },
-    {
-      id: "editing",
-      label: "Renderização",
-      description: "Processando a montagem, o áudio, a imagem e exportando o arquivo final.",
-      hours: editingHours,
-      durationMs: Math.round(1750 * multiplier)
-    },
-    {
-      id: "upload",
-      label: "Upload e processamento",
-      description: "Enviando o arquivo. O vídeo só ficará público quando a plataforma concluir o processamento.",
-      hours: uploadHours,
-      durationMs: Math.round(2800 * multiplier)
-    }
+    createStage(
+      "planning",
+      "Planejamento e roteiro",
+      "Organizando a ideia, os pontos principais e a sequência de gravação.",
+      planningHours,
+      1350,
+      visualMultiplier,
+      modifiers
+    ),
+    createStage(
+      "recording",
+      "Gravação",
+      "Capturando cenas, refazendo trechos e registrando a apresentação.",
+      recordingHours,
+      2300,
+      visualMultiplier,
+      modifiers
+    ),
+    createStage(
+      "editing",
+      "Renderização",
+      "Processando a montagem, o áudio, a imagem e exportando o arquivo final.",
+      editingHours,
+      1750,
+      visualMultiplier,
+      modifiers
+    ),
+    createStage(
+      "upload",
+      "Upload e processamento",
+      "Enviando o arquivo. O vídeo só ficará público quando a plataforma concluir o processamento.",
+      uploadHours,
+      2800,
+      visualMultiplier,
+      modifiers
+    )
   ];
 }
 
-export function getTotalProductionHours(format: FormatOption): number {
-  return getProductionStages(format).reduce(
+export function getTotalProductionHours(
+  format: FormatOption,
+  modifiers: ProgressionModifiers = DEFAULT_MODIFIERS
+): number {
+  return getProductionStages(format, modifiers).reduce(
     (sum, stage) => sum + stage.hours,
     0
   );
@@ -159,7 +200,8 @@ export function isConnectorMatched(
 
 export function calculateHiddenVideoResult(
   draft: VideoDraft,
-  state: PlayerState
+  state: PlayerState,
+  modifiers: ProgressionModifiers = DEFAULT_MODIFIERS
 ): VideoResult {
   const theme = THEMES.find((item) => item.id === draft.themeId);
   const format = FORMATS.find((item) => item.id === draft.formatId);
@@ -169,7 +211,11 @@ export function calculateHiddenVideoResult(
     throw new Error("Rascunho de vídeo incompleto.");
   }
 
-  const titleScore = calculateTitleScore(draft.title);
+  const titleScore = clamp(
+    calculateTitleScore(draft.title) + modifiers.titleBonus,
+    0,
+    100
+  );
   const compatibilityBonus = format.idealThemes.includes(theme.id) ? 12 : 2;
   const planningScore = clamp(
     35 +
@@ -177,33 +223,68 @@ export function calculateHiddenVideoResult(
       compatibilityBonus +
       titleScore * 0.25 +
       thumbnail.clickBonus +
-      thumbnail.credibilityBonus,
+      thumbnail.credibilityBonus +
+      modifiers.planningBonus,
     0,
     100
   );
-  const editingScore = calculateEditingScore(draft, format);
-  const uncertainty = -8 + Math.random() * 16;
+  const editingScore = clamp(
+    calculateEditingScore(draft, format) + modifiers.editingBonus,
+    0,
+    100
+  );
+  const uncertaintyRange = 16 - modifiers.qualityConsistency * 10;
+  const uncertainty =
+    -uncertaintyRange + Math.random() * uncertaintyRange * 2;
+  const executionFactor = 0.72 + modifiers.qualityConsistency * 0.28;
+  const rawQuality =
+    (planningScore * 0.36 +
+      editingScore * 0.39 +
+      state.creativity * 0.1 +
+      format.qualityBonus +
+      modifiers.audioVisualBonus) *
+      executionFactor +
+    uncertainty;
   const quality = Math.round(
-    clamp(
-      planningScore * 0.4 +
-        editingScore * 0.4 +
-        state.creativity * 0.12 +
-        format.qualityBonus +
-        uncertainty,
-      0,
-      100
-    )
+    clamp(rawQuality, 0, modifiers.qualityCeiling)
   );
 
   return {
     quality,
     planningScore: Math.round(planningScore),
-    editingScore,
-    titleScore,
+    editingScore: Math.round(editingScore),
+    titleScore: Math.round(titleScore),
     views: 0,
     subscribers: 0,
     revenue: 0,
     performanceLabel: "Desempenho ainda desconhecido"
+  };
+}
+
+function createStage(
+  id: ProductionStageId,
+  label: string,
+  description: string,
+  baseHours: number,
+  baseDurationMs: number,
+  visualMultiplier: number,
+  modifiers: ProgressionModifiers
+): ProductionStage {
+  const timeMultiplier = modifiers.stageTimeMultipliers[id];
+  const hours = Math.max(
+    0.5,
+    Math.round(baseHours * timeMultiplier * 2) / 2
+  );
+
+  return {
+    id,
+    label,
+    description,
+    hours,
+    durationMs: Math.max(
+      750,
+      Math.round(baseDurationMs * visualMultiplier * Math.max(0.55, timeMultiplier))
+    )
   };
 }
 

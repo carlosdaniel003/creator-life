@@ -9,6 +9,7 @@ import "./ChannelComputerActions";
 import "./ChannelGrowthStyles";
 import "./CollegeAndDynamicGoals";
 import "./CollegeGoalsSafeguards";
+import "./FoodConsumptionTimePatch";
 import { identityReady } from "./PlayerIdentitySystem";
 
 void identityReady.then(async () => {

@@ -1,3 +1,4 @@
+import "./IdentityOnboardingGuard";
 import "./StoryResetController";
 import "./VideoProductionUxFix";
 import "./ExpandedNichePatch";

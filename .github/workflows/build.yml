@@ -22,4 +22,17 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Build
-        run: npm run build
+        id: project-build
+        continue-on-error: true
+        shell: bash
+        run: npm run build > build.log 2>&1
+      - name: Upload build report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: creator-life-build-report
+          path: build.log
+          retention-days: 1
+      - name: Confirm build result
+        if: steps.project-build.outcome == 'failure'
+        run: exit 1

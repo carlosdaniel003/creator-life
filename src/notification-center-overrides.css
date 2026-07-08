@@ -1,11 +1,23 @@
+#game-container .quick-action-menu {
+  z-index: 96 !important;
+}
+
+#game-container .quick-action-menu__panel {
+  bottom: 82px !important;
+}
+
 #game-container .game-pause-button {
-  right: 168px !important;
+  right: 186px !important;
   bottom: 20px !important;
 }
 
 @media (max-width: 760px) {
+  #game-container .quick-action-menu__panel {
+    bottom: 66px !important;
+  }
+
   #game-container .game-pause-button {
-    right: 72px !important;
+    right: 76px !important;
     bottom: 10px !important;
   }
 }

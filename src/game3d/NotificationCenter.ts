@@ -1,4 +1,3 @@
-import type { ChannelGain } from "../game/types";
 import "../notification-center.css";
 import { ComputerTaskController } from "./ComputerTaskController";
 import { CreatorLife3D } from "./CreatorLife3D";
@@ -19,8 +18,13 @@ interface NotificationInput {
   durationMs?: number;
 }
 
-interface NotificationRecord extends Required<NotificationInput> {
+interface NotificationRecord {
   id: string;
+  title: string;
+  message: string;
+  type: NotificationType;
+  category: NotificationCategory;
+  durationMs: number;
   createdAt: number;
   read: boolean;
 }
@@ -33,7 +37,6 @@ interface ActiveNotification {
 
 interface RuntimeLike {
   container: HTMLElement;
-  modalOpen?: boolean;
   openComputer?: () => void;
   closeModal?: () => void;
 }
@@ -60,14 +63,11 @@ const MAX_PENDING = 50;
 const HISTORY_KEY = "creator-life-notifications-v1";
 const PATCH_FLAG = "__creatorLifeNotificationCenterPatched";
 
-let runtimeInstance: RuntimeLike | null = null;
-let centerInstance: NotificationCenter | null = null;
-
-const SVG_ICONS = {
+const ICONS = {
   menu: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
   status: '<path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="12" r="2"/><circle cx="15" cy="18" r="2"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/><path d="m16 8 5-5M17 3h4v4"/>',
-  opportunity: '<path d="M9 18h6M10 22h4"/><path d="M8.5 14.5A7 7 0 1 1 15.5 14.5C14.5 15.3 14 16.2 14 17h-4c0-.8-.5-1.7-1.5-2.5Z"/><path d="m12 7 1.2 2.4L16 10l-2 2 .5 2.8-2.5-1.3-2.5 1.3L10 12l-2-2 2.8-.6L12 7Z"/>',
+  opportunity: '<path d="M9 18h6M10 22h4"/><path d="M8.5 14.5A7 7 0 1 1 15.5 14.5C14.5 15.3 14 16.2 14 17h-4c0-.8-.5-1.7-1.5-2.5Z"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',
   college: '<path d="m2 9 10-5 10 5-10 5L2 9Z"/><path d="M6 11v5c3 2 9 2 12 0v-5M22 9v6"/>',
   agenda: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/>',
@@ -78,17 +78,19 @@ const SVG_ICONS = {
   close: '<path d="m6 6 12 12M18 6 6 18"/>'
 } as const;
 
-type SvgIconName = keyof typeof SVG_ICONS;
+type IconName = keyof typeof ICONS;
 
-function svg(name: SvgIconName): string {
-  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${SVG_ICONS[name]}</svg>`;
+let runtimeInstance: RuntimeLike | null = null;
+let centerInstance: NotificationCenter | null = null;
+
+function icon(name: IconName): string {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
 }
 
 class NotificationCenter {
   private container: HTMLElement | null = null;
   private queueElement: HTMLElement | null = null;
   private quickMenu: HTMLElement | null = null;
-  private quickMenuPanel: HTMLElement | null = null;
   private historyOverlay: HTMLElement | null = null;
   private historyList: HTMLElement | null = null;
   private pending: NotificationRecord[] = [];
@@ -96,32 +98,53 @@ class NotificationCenter {
   private history: NotificationRecord[] = this.loadHistory();
   private menuOpen = false;
   private historyOpen = false;
-  private toastObserver: MutationObserver | null = null;
-  private uiObserver: MutationObserver | null = null;
-  private updateScheduled = false;
+  private mountedOnce = false;
+  private mountScheduled = false;
 
-  public install(): void {
+  public mount(): void {
     const container = document.getElementById("game-container");
     if (!container) {
-      requestAnimationFrame(() => this.install());
+      requestAnimationFrame(() => this.mount());
       return;
     }
-    if (this.container === container) return;
 
     this.container = container;
-    this.createQueue();
-    this.createQuickMenu();
-    this.createHistoryPanel();
-    this.observeLegacyToast();
-    this.observeHudChanges();
-    this.bindGlobalEvents();
+    this.recoverDetachedNotifications();
+
+    this.queueElement =
+      container.querySelector<HTMLElement>(".notification-queue") ??
+      this.createQueue(container);
+    this.quickMenu =
+      container.querySelector<HTMLElement>(".quick-action-menu") ??
+      this.createQuickMenu(container);
+    this.historyOverlay =
+      container.querySelector<HTMLElement>(".notification-center-overlay") ??
+      this.createHistoryPanel(container);
+    this.historyList = this.historyOverlay.querySelector<HTMLElement>(
+      ".notification-center-list"
+    );
+
+    this.bindMountedElements();
+    this.renderHistory();
     this.updateBadges();
+    this.updateShortcutMetadata();
+    this.pump();
+    this.mountedOnce = true;
+  }
+
+  public scheduleMount(): void {
+    if (this.mountScheduled) return;
+    this.mountScheduled = true;
+    requestAnimationFrame(() => {
+      this.mountScheduled = false;
+      this.mount();
+    });
   }
 
   public enqueue(input: NotificationInput): void {
-    this.install();
+    this.mount();
     const now = Date.now();
-    const normalized: Required<NotificationInput> = {
+    const normalized = {
       title: input.title.trim() || "Atualização",
       message: input.message.trim(),
       type: input.type ?? "neutral",
@@ -142,14 +165,17 @@ class NotificationCenter {
       recent.durationMs = normalized.durationMs;
       recent.createdAt = now;
       recent.read = false;
-      this.moveHistoryToTop(recent);
+      this.history = [
+        recent,
+        ...this.history.filter((item) => item.id !== recent.id)
+      ];
       const queued = this.pending.find((item) => item.id === recent.id);
       if (queued) Object.assign(queued, recent);
       const active = this.active.get(recent.id);
-      if (active) this.updateCard(active.element, recent);
+      if (active) this.renderCard(active.element, recent);
       this.persistHistory();
-      this.updateBadges();
       this.renderHistory();
+      this.updateBadges();
       return;
     }
 
@@ -160,51 +186,40 @@ class NotificationCenter {
       read: this.historyOpen
     };
 
-    this.history.unshift(record);
-    this.history = this.history.slice(0, MAX_HISTORY);
+    this.history = [record, ...this.history].slice(0, MAX_HISTORY);
     this.pending.push(record);
     if (this.pending.length > MAX_PENDING) this.pending.shift();
     this.persistHistory();
-    this.updateBadges();
     this.renderHistory();
+    this.updateBadges();
     this.pump();
   }
 
-  public openHistory(): void {
-    this.install();
-    if (!this.historyOverlay) return;
-    this.historyOpen = true;
-    this.menuOpen = false;
-    this.quickMenu?.classList.remove("is-open");
-    this.history.forEach((item) => {
-      item.read = true;
-    });
-    this.persistHistory();
-    this.updateBadges();
-    this.renderHistory();
-    this.historyOverlay.classList.add("is-visible");
-    this.historyOverlay.setAttribute("aria-hidden", "false");
+  private recoverDetachedNotifications(): void {
+    const queueDetached =
+      this.queueElement !== null && !this.queueElement.isConnected;
+    if (!queueDetached) return;
+
+    const interrupted = [...this.active.values()].map((item) => item.record);
+    this.active.forEach((item) => window.clearTimeout(item.timer));
+    this.active.clear();
+    this.pending = [...interrupted, ...this.pending].slice(0, MAX_PENDING);
+    this.queueElement = null;
+    this.quickMenu = null;
+    this.historyOverlay = null;
+    this.historyList = null;
   }
 
-  private closeHistory(): void {
-    if (!this.historyOverlay) return;
-    this.historyOpen = false;
-    this.historyOverlay.classList.remove("is-visible");
-    this.historyOverlay.setAttribute("aria-hidden", "true");
-  }
-
-  private createQueue(): void {
-    if (!this.container || this.queueElement) return;
+  private createQueue(container: HTMLElement): HTMLElement {
     const queue = document.createElement("section");
     queue.className = "notification-queue";
     queue.setAttribute("aria-label", "Notificações recentes");
     queue.setAttribute("aria-live", "polite");
-    this.container.append(queue);
-    this.queueElement = queue;
+    container.append(queue);
+    return queue;
   }
 
-  private createQuickMenu(): void {
-    if (!this.container || this.quickMenu) return;
+  private createQuickMenu(container: HTMLElement): HTMLElement {
     const menu = document.createElement("div");
     menu.className = "quick-action-menu";
     menu.innerHTML = `
@@ -217,112 +232,84 @@ class NotificationCenter {
         ${this.quickAction("agenda", "agenda", "Agenda", "Contas e compromissos")}
       </div>
       <button type="button" class="quick-action-menu__launcher" aria-label="Abrir atalhos" aria-expanded="false">
-        <span class="quick-action-menu__launcher-icon">${svg("menu")}</span>
+        <span class="quick-action-menu__launcher-icon">${icon("menu")}</span>
         <strong>Atalhos</strong>
         <b class="quick-action-menu__badge" data-notification-badge hidden>0</b>
       </button>`;
-    this.container.append(menu);
-    this.quickMenu = menu;
-    this.quickMenuPanel = menu.querySelector(".quick-action-menu__panel");
-
-    menu
-      .querySelector<HTMLButtonElement>(".quick-action-menu__launcher")
-      ?.addEventListener("click", () => this.toggleMenu());
-    menu.querySelectorAll<HTMLButtonElement>("[data-quick-action]").forEach((button) => {
-      button.addEventListener("click", () => {
-        this.handleQuickAction(button.dataset.quickAction ?? "");
-      });
-    });
+    container.append(menu);
+    return menu;
   }
 
   private quickAction(
     action: string,
-    iconName: SvgIconName,
+    iconName: IconName,
     label: string,
     description: string,
     withBadge = false
   ): string {
-    return `<button type="button" class="quick-action-menu__item" data-quick-action="${action}" role="menuitem"><span>${svg(iconName)}</span><span><strong>${label}</strong><small data-quick-meta="${action}">${description}</small></span>${withBadge ? '<b class="quick-action-menu__item-badge" data-notification-badge hidden>0</b>' : ""}</button>`;
+    return `<button type="button" class="quick-action-menu__item" data-quick-action="${action}" role="menuitem"><span>${icon(iconName)}</span><span><strong>${label}</strong><small data-quick-meta="${action}">${description}</small></span>${withBadge ? '<b class="quick-action-menu__item-badge" data-notification-badge hidden>0</b>' : ""}</button>`;
   }
 
-  private createHistoryPanel(): void {
-    if (!this.container || this.historyOverlay) return;
+  private createHistoryPanel(container: HTMLElement): HTMLElement {
     const overlay = document.createElement("div");
     overlay.className = "notification-center-overlay";
     overlay.setAttribute("aria-hidden", "true");
     overlay.innerHTML = `
       <aside class="notification-center-panel" role="dialog" aria-modal="true" aria-labelledby="notification-center-title">
-        <header><div><span>CENTRAL</span><h2 id="notification-center-title">Notificações</h2><p>Eventos, avisos e resultados recentes da sua história.</p></div><button type="button" data-close-notification-center aria-label="Fechar">${svg("close")}</button></header>
+        <header><div><span>CENTRAL</span><h2 id="notification-center-title">Notificações</h2><p>Eventos, avisos e resultados recentes da sua história.</p></div><button type="button" data-close-notification-center aria-label="Fechar">${icon("close")}</button></header>
         <div class="notification-center-toolbar"><span data-notification-summary>Nenhuma notificação</span><button type="button" data-clear-notifications>Limpar histórico</button></div>
         <div class="notification-center-list"></div>
       </aside>`;
-    this.container.append(overlay);
-    this.historyOverlay = overlay;
-    this.historyList = overlay.querySelector(".notification-center-list");
-
-    overlay.addEventListener("pointerdown", (event) => {
-      const target = event.target as Element | null;
-      if (event.target === overlay || target?.closest("[data-close-notification-center]")) {
-        this.closeHistory();
-      }
-    });
-    overlay
-      .querySelector<HTMLButtonElement>("[data-clear-notifications]")
-      ?.addEventListener("click", () => {
-        this.history = [];
-        this.pending = [];
-        this.active.forEach((item) => window.clearTimeout(item.timer));
-        this.active.clear();
-        this.queueElement?.replaceChildren();
-        this.persistHistory();
-        this.updateBadges();
-        this.renderHistory();
-      });
-    this.renderHistory();
+    container.append(overlay);
+    return overlay;
   }
 
-  private bindGlobalEvents(): void {
-    document.addEventListener("pointerdown", (event) => {
-      if (!this.menuOpen || !this.quickMenu) return;
-      const target = event.target as Node | null;
-      if (target && this.quickMenu.contains(target)) return;
-      this.setMenuOpen(false);
-    });
-
-    window.addEventListener(
-      "keydown",
-      (event) => {
-        if (event.key !== "Escape") return;
-        if (this.historyOpen) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          this.closeHistory();
-        } else if (this.menuOpen) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          this.setMenuOpen(false);
-        }
-      },
-      true
-    );
-  }
-
-  private toggleMenu(): void {
-    this.setMenuOpen(!this.menuOpen);
-  }
-
-  private setMenuOpen(open: boolean): void {
-    this.menuOpen = open;
-    this.quickMenu?.classList.toggle("is-open", open);
+  private bindMountedElements(): void {
     const launcher = this.quickMenu?.querySelector<HTMLButtonElement>(
       ".quick-action-menu__launcher"
     );
-    launcher?.setAttribute("aria-expanded", String(open));
-    launcher?.setAttribute("aria-label", open ? "Fechar atalhos" : "Abrir atalhos");
+    if (launcher && launcher.dataset.bound !== "true") {
+      launcher.dataset.bound = "true";
+      launcher.addEventListener("click", () => this.setMenuOpen(!this.menuOpen));
+    }
+
+    this.quickMenu
+      ?.querySelectorAll<HTMLButtonElement>("[data-quick-action]")
+      .forEach((button) => {
+        if (button.dataset.bound === "true") return;
+        button.dataset.bound = "true";
+        button.addEventListener("click", () => {
+          this.handleQuickAction(button.dataset.quickAction ?? "");
+        });
+      });
+
+    const close = this.historyOverlay?.querySelector<HTMLButtonElement>(
+      "[data-close-notification-center]"
+    );
+    if (close && close.dataset.bound !== "true") {
+      close.dataset.bound = "true";
+      close.addEventListener("click", () => this.closeHistory());
+    }
+
+    const clear = this.historyOverlay?.querySelector<HTMLButtonElement>(
+      "[data-clear-notifications]"
+    );
+    if (clear && clear.dataset.bound !== "true") {
+      clear.dataset.bound = "true";
+      clear.addEventListener("click", () => this.clearHistory());
+    }
+
+    if (this.historyOverlay?.dataset.bound !== "true") {
+      this.historyOverlay?.setAttribute("data-bound", "true");
+      this.historyOverlay?.addEventListener("pointerdown", (event) => {
+        if (event.target === this.historyOverlay) this.closeHistory();
+      });
+    }
   }
 
   private handleQuickAction(action: string): void {
     this.setMenuOpen(false);
+
     if (action === "notifications") {
       this.openHistory();
       return;
@@ -333,13 +320,7 @@ class NotificationCenter {
         `.creator-progress-dock [data-progress-panel="${action}"]`
       );
       if (button) button.click();
-      else {
-        this.enqueue({
-          title: "Painel indisponível",
-          message: "Aguarde o carregamento completo da história.",
-          type: "warning"
-        });
-      }
+      else this.warnUnavailable("Aguarde o carregamento completo da história.");
       return;
     }
 
@@ -356,44 +337,87 @@ class NotificationCenter {
         ".production-overlay.is-visible, .pause-menu-overlay.is-visible, .character-death-overlay, .computer-task-card.is-visible, .reading-task-card.is-visible"
       )
     ) {
-      this.enqueue({
-        title: "Ação indisponível",
-        message: "Conclua ou feche a atividade atual antes de abrir este painel.",
-        type: "warning"
-      });
-      return;
-    }
-
-    const runtime = runtimeInstance;
-    if (!runtime?.openComputer) {
-      this.enqueue({
-        title: "Computador indisponível",
-        message: "Aguarde o carregamento completo do quarto.",
-        type: "warning"
-      });
-      return;
-    }
-
-    runtime.closeModal?.();
-    runtime.openComputer();
-    requestAnimationFrame(() => {
-      const button = [...document.querySelectorAll<HTMLButtonElement>("#modal-actions button")].find(
-        (item) => item.textContent?.trim() === label
+      this.warnUnavailable(
+        "Conclua ou feche a atividade atual antes de abrir este painel."
       );
+      return;
+    }
+
+    if (!runtimeInstance?.openComputer) {
+      this.warnUnavailable("Aguarde o carregamento completo do quarto.");
+      return;
+    }
+
+    runtimeInstance.closeModal?.();
+    runtimeInstance.openComputer();
+    requestAnimationFrame(() => {
+      const button = [...document.querySelectorAll<HTMLButtonElement>(
+        "#modal-actions button"
+      )].find((item) => item.textContent?.trim() === label);
+
       if (button) button.click();
       else {
-        runtime.closeModal?.();
-        this.enqueue({
-          title: "Atalho não encontrado",
-          message: "Abra o computador e tente novamente.",
-          type: "warning"
-        });
+        runtimeInstance?.closeModal?.();
+        this.warnUnavailable("Abra o computador e tente novamente.");
       }
     });
   }
 
+  private warnUnavailable(message: string): void {
+    this.enqueue({
+      title: "Ação indisponível",
+      message,
+      type: "warning",
+      category: "system"
+    });
+  }
+
+  private setMenuOpen(open: boolean): void {
+    this.menuOpen = open;
+    this.quickMenu?.classList.toggle("is-open", open);
+    const launcher = this.quickMenu?.querySelector<HTMLButtonElement>(
+      ".quick-action-menu__launcher"
+    );
+    launcher?.setAttribute("aria-expanded", String(open));
+  }
+
+  private openHistory(): void {
+    if (!this.historyOverlay) return;
+    this.historyOpen = true;
+    this.setMenuOpen(false);
+    this.history.forEach((item) => {
+      item.read = true;
+    });
+    this.persistHistory();
+    this.updateBadges();
+    this.renderHistory();
+    this.historyOverlay.classList.add("is-visible");
+    this.historyOverlay.setAttribute("aria-hidden", "false");
+  }
+
+  private closeHistory(): void {
+    this.historyOpen = false;
+    this.historyOverlay?.classList.remove("is-visible");
+    this.historyOverlay?.setAttribute("aria-hidden", "true");
+  }
+
+  private clearHistory(): void {
+    this.history = [];
+    this.pending = [];
+    this.active.forEach((item) => window.clearTimeout(item.timer));
+    this.active.clear();
+    this.queueElement?.replaceChildren();
+    this.persistHistory();
+    this.renderHistory();
+    this.updateBadges();
+  }
+
   private pump(): void {
-    if (!this.queueElement) return;
+    if (!this.queueElement?.isConnected) {
+      this.scheduleMount();
+      return;
+    }
+
     while (this.active.size < MAX_VISIBLE && this.pending.length > 0) {
       const record = this.pending.shift();
       if (!record) break;
@@ -411,24 +435,21 @@ class NotificationCenter {
   private createCard(record: NotificationRecord): HTMLElement {
     const card = document.createElement("article");
     card.className = "notification-card";
-    card.dataset.type = record.type;
-    card.dataset.category = record.category;
     card.dataset.notificationId = record.id;
-    this.updateCard(card, record);
+    this.renderCard(card, record);
     card
       .querySelector<HTMLButtonElement>("[data-dismiss-notification]")
       ?.addEventListener("click", () => this.dismiss(record.id));
     return card;
   }
 
-  private updateCard(card: HTMLElement, record: NotificationRecord): void {
-    const iconName = this.iconFor(record);
+  private renderCard(card: HTMLElement, record: NotificationRecord): void {
     card.dataset.type = record.type;
     card.dataset.category = record.category;
     card.innerHTML = `
-      <span class="notification-card__icon">${svg(iconName)}</span>
+      <span class="notification-card__icon">${icon(this.iconFor(record))}</span>
       <div class="notification-card__copy"><span>${this.categoryLabel(record.category)}</span><strong>${escapeHtml(record.title)}</strong><p>${escapeHtml(record.message)}</p></div>
-      <button type="button" class="notification-card__dismiss" data-dismiss-notification aria-label="Dispensar notificação">${svg("close")}</button>`;
+      <button type="button" class="notification-card__dismiss" data-dismiss-notification aria-label="Dispensar notificação">${icon("close")}</button>`;
   }
 
   private dismiss(id: string): void {
@@ -460,60 +481,12 @@ class NotificationCenter {
           .map(
             (item) => `
           <article class="notification-history-item" data-type="${item.type}">
-            <span>${svg(this.iconFor(item))}</span>
+            <span>${icon(this.iconFor(item))}</span>
             <div><small>${this.categoryLabel(item.category)} · ${formatTime(item.createdAt)}</small><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.message)}</p></div>
           </article>`
           )
           .join("")
-      : `<div class="notification-history-empty">${svg("bell")}<strong>Nenhuma notificação registrada</strong><p>Eventos, resultados de ações e avisos aparecerão aqui.</p></div>`;
-  }
-
-  private observeLegacyToast(): void {
-    const toast = this.container?.querySelector<HTMLElement>(".game-toast");
-    if (!toast || this.toastObserver) return;
-
-    const route = (): void => {
-      if (!toast.classList.contains("is-visible")) return;
-      const message = toast.textContent?.trim();
-      if (!message) return;
-      const type = isNotificationType(toast.dataset.type)
-        ? toast.dataset.type
-        : "neutral";
-      toast.classList.remove("is-visible");
-      this.enqueue({
-        title: type === "warning" ? "Atenção" : type === "success" ? "Concluído" : "Atualização",
-        message,
-        type,
-        category: "system"
-      });
-    };
-
-    this.toastObserver = new MutationObserver(route);
-    this.toastObserver.observe(toast, {
-      attributes: true,
-      childList: true,
-      characterData: true,
-      subtree: true
-    });
-  }
-
-  private observeHudChanges(): void {
-    if (!this.container || this.uiObserver) return;
-    this.uiObserver = new MutationObserver(() => {
-      if (this.updateScheduled) return;
-      this.updateScheduled = true;
-      requestAnimationFrame(() => {
-        this.updateScheduled = false;
-        this.updateShortcutMetadata();
-        this.observeLegacyToast();
-      });
-    });
-    this.uiObserver.observe(this.container, {
-      childList: true,
-      subtree: true,
-      characterData: true
-    });
-    this.updateShortcutMetadata();
+      : `<div class="notification-history-empty">${icon("bell")}<strong>Nenhuma notificação registrada</strong><p>Eventos, resultados de ações e avisos aparecerão aqui.</p></div>`;
   }
 
   private updateShortcutMetadata(): void {
@@ -522,6 +495,7 @@ class NotificationCenter {
       ["opportunities", "progress-opportunity-count", "Propostas disponíveis"],
       ["status", "progress-status-level", "Vida e habilidades"]
     ];
+
     mappings.forEach(([action, sourceId, fallback]) => {
       const target = this.quickMenu?.querySelector<HTMLElement>(
         `[data-quick-meta="${action}"]`
@@ -541,7 +515,7 @@ class NotificationCenter {
       });
   }
 
-  private iconFor(record: Pick<NotificationRecord, "type" | "category">): SvgIconName {
+  private iconFor(record: Pick<NotificationRecord, "type" | "category">): IconName {
     if (record.type === "warning") return "warning";
     if (record.category === "channel" || record.category === "growth") {
       return "channel";
@@ -562,10 +536,6 @@ class NotificationCenter {
       milestone: "CONQUISTA"
     };
     return labels[category];
-  }
-
-  private moveHistoryToTop(record: NotificationRecord): void {
-    this.history = [record, ...this.history.filter((item) => item.id !== record.id)];
   }
 
   private loadHistory(): NotificationRecord[] {
@@ -590,7 +560,9 @@ class NotificationCenter {
             ? item.category
             : "system",
           durationMs: Number.isFinite(item.durationMs) ? item.durationMs : 5200,
-          createdAt: Number.isFinite(item.createdAt) ? item.createdAt : Date.now(),
+          createdAt: Number.isFinite(item.createdAt)
+            ? item.createdAt
+            : Date.now(),
           read: Boolean(item.read)
         }));
     } catch {
@@ -602,7 +574,7 @@ class NotificationCenter {
     try {
       localStorage.setItem(HISTORY_KEY, JSON.stringify(this.history));
     } catch {
-      // A fila continua funcionando mesmo quando o armazenamento é bloqueado.
+      // A interface continua funcionando quando o armazenamento é bloqueado.
     }
   }
 }
@@ -621,7 +593,7 @@ function patchRuntime(): void {
   prototype.injectInterface = function (): void {
     runtimeInstance = this as RuntimeLike;
     originalInjectInterface.call(this);
-    getCenter().install();
+    getCenter().scheduleMount();
   };
 
   prototype.showToast = function (
@@ -705,20 +677,32 @@ function installEventRouting(): void {
   );
 }
 
-function formatGain(gain: ChannelGain): string {
-  return [
-    gain.views > 0 ? `+${gain.views.toLocaleString("pt-BR")} views` : "",
-    gain.likes > 0 ? `+${gain.likes.toLocaleString("pt-BR")} likes` : "",
-    gain.subscribers > 0
-      ? `+${gain.subscribers.toLocaleString("pt-BR")} inscritos`
-      : "",
-    gain.revenue >= 0.01 ? `+R$ ${gain.revenue.toFixed(2)}` : ""
-  ]
-    .filter(Boolean)
-    .join(" · ");
+function installMountObserver(): void {
+  const start = (): void => {
+    const container = document.getElementById("game-container");
+    if (!container) {
+      requestAnimationFrame(start);
+      return;
+    }
+
+    const observer = new MutationObserver(() => {
+      getCenter().scheduleMount();
+    });
+    observer.observe(container, { childList: true, subtree: false });
+    getCenter().mount();
+  };
+  start();
 }
 
-void formatGain;
+function installGlobalDismissals(): void {
+  document.addEventListener("pointerdown", (event) => {
+    const menu = document.querySelector<HTMLElement>(".quick-action-menu");
+    if (!menu?.classList.contains("is-open")) return;
+    const target = event.target as Node | null;
+    if (target && menu.contains(target)) return;
+    menu.classList.remove("is-open");
+  });
+}
 
 function isNotificationType(value: unknown): value is NotificationType {
   return value === "success" || value === "warning" || value === "neutral";
@@ -749,4 +733,5 @@ function escapeHtml(value: string): string {
 patchRuntime();
 patchComputerMessages();
 installEventRouting();
-getCenter().install();
+installGlobalDismissals();
+installMountObserver();

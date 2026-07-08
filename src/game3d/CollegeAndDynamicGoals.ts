@@ -4,7 +4,6 @@ import { LifeSimulation } from "./LifeSimulation";
 import { ProgressionSystem } from "./ProgressionSystem";
 
 type AnyInstance = any;
-type ToastType = "success" | "warning" | "neutral";
 
 type GoalMetric =
   | "videos"
@@ -179,9 +178,10 @@ function patchCollegeSystem(): void {
   prototype.renderHud = function (): void {
     originalRenderHud.call(this);
     const snapshot = collegeSnapshot(this);
-    const college = this.hud?.querySelector<HTMLElement>(
+    const hud = this.hud as HTMLElement | undefined;
+    const college = hud?.querySelector(
       ".life-calendar-hud__college strong"
-    );
+    ) as HTMLElement | null | undefined;
     if (college) {
       college.textContent = `Média ${snapshot.grade.toFixed(0)} · ${examDateLabel(snapshot)}`;
     }
@@ -778,7 +778,13 @@ function goalCopy(
     case "investment":
       return { label: `Estrutura ${suffix}`, description: `Invista mais R$ ${delta.toFixed(0)} em equipamentos ou no quarto.` };
     case "courses":
-      return { label: `Formação ${suffix}`, description: `Conclua ${delta} novo${delta === 1 ? "" : "s"} curso${delta === 1 ? "" : "s"} profissional${delta === 1 ? "" : "is"}.` };
+      return {
+        label: `Formação ${suffix}`,
+        description:
+          delta === 1
+            ? "Conclua 1 novo curso profissional."
+            : `Conclua ${delta} novos cursos profissionais.`
+      };
     case "skills":
       return { label: `Domínio ${suffix}`, description: `Ganhe ${delta} novo${delta === 1 ? "" : "s"} nível${delta === 1 ? "" : "is"} somando todas as habilidades.` };
     case "reputation":
@@ -877,5 +883,3 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
-
-void (null as ToastType | null);

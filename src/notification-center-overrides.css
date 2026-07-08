@@ -3,21 +3,21 @@
 }
 
 #game-container .quick-action-menu__panel {
-  bottom: 82px !important;
+  bottom: 88px !important;
 }
 
 #game-container .game-pause-button {
-  right: 186px !important;
+  right: 228px !important;
   bottom: 20px !important;
 }
 
 @media (max-width: 760px) {
   #game-container .quick-action-menu__panel {
-    bottom: 66px !important;
+    bottom: 68px !important;
   }
 
   #game-container .game-pause-button {
-    right: 76px !important;
+    right: 82px !important;
     bottom: 10px !important;
   }
 }

@@ -54,8 +54,8 @@ function runWithHalfHourAdvance(
   try {
     const result = action();
 
-    if (result instanceof Promise) {
-      return result.finally(() => {
+    if (result && typeof (result as Promise<void>).finally === "function") {
+      return (result as Promise<void>).finally(() => {
         runtime.advanceTime = currentAdvanceTime;
       });
     }

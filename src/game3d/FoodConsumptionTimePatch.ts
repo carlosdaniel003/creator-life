@@ -22,7 +22,7 @@ if (!prototype[PATCH_FLAG]) {
   ): void {
     const isFoodModal = title === "Cozinha e hidratação";
     const adjustedBody = isFoodModal
-      ? body.replaceAll("consome uma hora", "consome 30 minutos")
+      ? body.split("consome uma hora").join("consome 30 minutos")
       : body;
 
     const adjustedActions = isFoodModal
@@ -54,8 +54,8 @@ function runWithHalfHourAdvance(
   try {
     const result = action();
 
-    if (result && typeof (result as Promise<void>).finally === "function") {
-      return (result as Promise<void>).finally(() => {
+    if (result instanceof Promise) {
+      return result.finally(() => {
         runtime.advanceTime = currentAdvanceTime;
       });
     }

@@ -1,1 +1,11 @@
-#game-container .game-pause-button{right:142px!important}@media(max-width:760px){#game-container .game-pause-button{right:62px!important}}
+#game-container .game-pause-button {
+  right: 168px !important;
+  bottom: 20px !important;
+}
+
+@media (max-width: 760px) {
+  #game-container .game-pause-button {
+    right: 72px !important;
+    bottom: 10px !important;
+  }
+}
